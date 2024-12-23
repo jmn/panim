@@ -32,6 +32,24 @@ void libs(Nob_Cmd *cmd)
     nob_cmd_append(cmd, "-l:libraylib.so", "-lm", "-ldl", "-lpthread");
 }
 
+bool build_plug_c3(bool force, Nob_Cmd *cmd, const char *source_path, const char *output_path)
+{
+    int rebuild_is_needed = nob_needs_rebuild1(output_path, source_path);
+    if (rebuild_is_needed < 0) return false;
+    if (force || rebuild_is_needed) {
+        cmd->count = 0;
+        nob_cmd_append(cmd,
+            "c3c", "dynamic-lib", "--no-entry", "--linux-crt", "/usr/lib", "-o",
+            output_path, source_path,
+            SRC_DIR"/raylib.c3i",
+            SRC_DIR"/future.c3",
+        );
+        if (!nob_cmd_run_sync_and_reset(cmd)) return false;
+    }
+
+    return true;
+}
+
 bool build_plug_c(bool force, Nob_Cmd *cmd, const char *source_path, const char *output_path)
 {
     int rebuild_is_needed = nob_needs_rebuild1(output_path, source_path);
@@ -114,6 +132,7 @@ int main(int argc, char **argv)
     if (!build_plug_c(force, &cmd, SRC_DIR"/squares.c", BUILD_DIR"/libsquare.so")) return 1;
     if (!build_plug_c(force, &cmd, SRC_DIR"/bezier.c", BUILD_DIR"/libbezier.so")) return 1;
     if (!build_plug_cxx(force, &cmd, SRC_DIR"/probe.cpp", BUILD_DIR"/libprobe.so")) return 1;
+    if (!build_plug_c3(force, &cmd, SRC_DIR"/probe2.c3", BUILD_DIR"/libprobe2")) return 1;
 
     {
         const char *output_path = BUILD_DIR"/panim";

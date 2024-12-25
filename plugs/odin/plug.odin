@@ -43,6 +43,11 @@ plugin_state :: struct {
 	t_interp:    f32,
 	groups:      [dynamic]GroupState,
 	camera:      rl.Camera2D,
+	rotation:    f32, // Track rotation angle
+	zoom_speed:  f32, // Speed of zoom transition
+	zoom_dir:    f32, // Direction of zoom change
+	zoom_min:    f32, // Minimum zoom value
+	zoom_max:    f32, // Maximum zoom value
 }
 
 state: plugin_state = plugin_state {
@@ -50,6 +55,11 @@ state: plugin_state = plugin_state {
 	finished    = false,
 	frame_count = 0,
 	env         = Env{},
+	rotation    = 0.0, // Initialize the rotation to 0
+	zoom_speed  = 0.01, // Smooth zoom speed
+	zoom_dir    = 1.0, // Start zooming in
+	zoom_min    = 0.2, // Minimum zoom limit
+	zoom_max    = 1.0, // Maximum zoom limit
 }
 
 // Plugin functions implementation
@@ -88,7 +98,7 @@ plug_update :: proc "c" (env: Env) {
 	state.env = env
 
 	state.frame_count += 1
-	if state.frame_count > 100 {
+	if state.frame_count > 1200 {
 		state.finished = true
 	}
 
@@ -96,32 +106,36 @@ plug_update :: proc "c" (env: Env) {
 
 	// Drawing
 	{
-		// Adjust zoom level based on mouse wheel input
-		state.camera.zoom += env.mouse_wheel * 0.05 // Adjust zoom speed
-		// Clamp zoom to avoid extreme zoom levels
-		if state.camera.zoom < 0.2 {
-			state.camera.zoom = 0.2
+		// Update zoom value over time for continuous zooming in and out
+		state.camera.zoom += state.zoom_dir * state.zoom_speed
+		// Reverse zoom direction if the zoom reaches the min or max value
+		if state.camera.zoom <= state.zoom_min {
+			state.zoom_dir = 1.0 // Zoom in
 		}
-		if state.camera.zoom > 1.0 {
-			state.camera.zoom = 1.0
-		}
-
-		// Set camera zoom to fit the entire grid
-		if state.camera.zoom == 0.0 {
-			state.camera = rl.Camera2D {
-				target   = rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
-				offset   = rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
-				rotation = 0.0,
-				zoom     = 0.3, // Adjusted zoom to make everything visible on the screen
-			}
+		if state.camera.zoom >= state.zoom_max {
+			state.zoom_dir = -1.0 // Zoom out
 		}
 
-		// Set a fixed camera zoom level (no dynamic zooming)
-		state.camera.zoom = 0.3
+		// Adjust camera rotation based on left and right arrow keys
+		if rl.IsKeyDown(.RIGHT) {
+			state.rotation += 0.01 // Rotate clockwise
+		}
+		if rl.IsKeyDown(.LEFT) {
+			state.rotation -= 0.01 // Rotate counter-clockwise
+		}
+
+		// Set camera properties with zoom and rotation
+		state.camera = rl.Camera2D {
+			rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
+			rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
+			state.rotation, // Apply rotation here
+			state.camera.zoom, // Apply zoom here
+		}
 
 		rl.BeginMode2D(state.camera)
 
-		rl.ClearBackground(rl.BLUE)
+		// Gradient background for a more dynamic look
+		rl.ClearBackground(rl.Color{30, 30, 30, 255}) // Dark background
 
 		// Number of rows and groups per row (8 groups per row, multiple rows)
 		num_groups_per_row := 8 // 8 groups per row
@@ -192,12 +206,14 @@ plug_update :: proc "c" (env: Env) {
 					group_state.direction = -1.0 // Change direction when touching the red circle
 				}
 
-				// Draw the circles and lines between the green, yellow, and red positions
-				rl.DrawCircleV(green_position, radius_green, rl.GREEN)
-				rl.DrawCircleV(red_position, radius_red, rl.RED)
-				rl.DrawCircleV(yellow_position, radius_yellow, rl.YELLOW)
-				rl.DrawLineV(green_position, yellow_position, rl.BLACK)
-				rl.DrawLineV(yellow_position, red_position, rl.BLACK)
+				// Draw the circles with gradient and transparency for more polished look
+				rl.DrawCircleV(green_position, radius_green, rl.Color{0, 255, 0, 180})
+				rl.DrawCircleV(red_position, radius_red, rl.Color{255, 0, 0, 180})
+				rl.DrawCircleV(yellow_position, radius_yellow, rl.Color{255, 255, 0, 180})
+
+				// Use thinner lines for connection with a subtle color
+				rl.DrawLineV(green_position, yellow_position, rl.Color{255, 255, 255, 150})
+				rl.DrawLineV(yellow_position, red_position, rl.Color{255, 255, 255, 150})
 			}
 		}
 
@@ -209,7 +225,9 @@ plug_update :: proc "c" (env: Env) {
 plug_reset :: proc "c" () {
 	state.finished = false
 	state.frame_count = 0
-	state.env = Env{}
+	state.rotation = 0.0
+	state.camera.zoom = 0.4
+	state.zoom_dir = 1.0
 }
 
 @(export)

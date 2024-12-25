@@ -14,6 +14,7 @@ Env :: struct {
 	screen_height: f32,
 	rendering:     bool,
 	play_sound:    proc(_: rl.Sound, _: rl.Wave), // function pointer equivalent
+	mouse_wheel:   f32, // Add mouse wheel input
 }
 
 to_string :: proc(env: Env) -> cstring {
@@ -95,6 +96,16 @@ plug_update :: proc "c" (env: Env) {
 
 	// Drawing
 	{
+		// Adjust zoom level based on mouse wheel input
+		state.camera.zoom += env.mouse_wheel * 0.05 // Adjust zoom speed
+		// Clamp zoom to avoid extreme zoom levels
+		if state.camera.zoom < 0.2 {
+			state.camera.zoom = 0.2
+		}
+		if state.camera.zoom > 1.0 {
+			state.camera.zoom = 1.0
+		}
+
 		// Set camera zoom to fit the entire grid
 		if state.camera.zoom == 0.0 {
 			state.camera = rl.Camera2D {

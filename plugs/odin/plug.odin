@@ -127,98 +127,98 @@ plug_update :: proc "c" (env: Env) {
 	state.t += 0.01
 
 	// Drawing
-
 	{
 		if state.camera.zoom == 0.0 {
 			state.camera = rl.Camera2D {
-				target   = {env.screen_width * 0.5, env.screen_height * 0.5}, // Initial camera target at center
+				target   = {env.screen_width * 0.5, env.screen_height * 0.5},
 				offset   = {env.screen_width * 0.5, env.screen_height * 0.5},
 				rotation = 0.0,
-				zoom     = 0.2, // Set a base zoom-in level (further zoomed in)
+				zoom     = 0.2, // Set a zoom-in level
 			}
 		}
 
 		// Zoom in further but keep a zoomed-out effect
 		state.camera.zoom = 0.2 + 0.1 * math.sin(2.0 * math.PI * state.t)
 
-		// Shift the camera to center around the 10th set (group 9)
-		target_offset_x := f32(9) * (env.screen_width * 0.25) - env.screen_width * 0.15 // Center around the 10th group
-		state.camera.target = {env.screen_width * 0.5 + target_offset_x, env.screen_height * 0.5}
-
 		rl.BeginMode2D(state.camera)
 
 		rl.ClearBackground(rl.BLUE)
 
-		num_groups := 20
+		num_groups_per_row := 5
+		num_rows := 4
 		group_spacing := env.screen_width * 0.25 // Tighter spacing
 
-		for group_index in 0 ..< num_groups {
-			group_offset_x := f32(group_index) * group_spacing - env.screen_width * 0.15 // Move first set more to the left
+		// Loop through each row and column to position the sets
+		for row in 0 ..< num_rows {
+			for col in 0 ..< num_groups_per_row {
+				group_index := row * num_groups_per_row + col
+				group_offset_x := f32(col) * group_spacing - env.screen_width * 0.15 // X offset for each set
+				group_offset_y := f32(row) * group_spacing - env.screen_height * 0.15 // Y offset for each set
 
-			if len(state.groups) <= group_index {
-				append(&state.groups, GroupState{t_interp = 0.5, direction = 1.0})
+				if len(state.groups) <= group_index {
+					append(&state.groups, GroupState{t_interp = 0.5, direction = 1.0})
+				}
+
+				group_state := &state.groups[group_index]
+
+				radius_green := env.screen_width * 0.04
+				orbit_green := env.screen_width * 0.25
+				x1, y1 := orbit_circle(
+					state.env,
+					state.t,
+					radius_green,
+					orbit_green,
+					group_offset_x,
+					rl.GREEN,
+				)
+
+				radius_red := env.screen_width * 0.01
+				orbit_red := env.screen_width * 0.13
+				x3, y3 := orbit_circle(
+					state.env,
+					state.t,
+					radius_red,
+					orbit_red,
+					group_offset_x,
+					rl.RED,
+				)
+
+				radius_yellow := env.screen_width * 0.01
+				group_state.t_interp += group_state.direction * 0.01
+				if group_state.t_interp >= 1.0 {
+					group_state.t_interp = 1.0
+					group_state.direction = -1.0
+				} else if group_state.t_interp <= 0.0 {
+					group_state.t_interp = 0.0
+					group_state.direction = 1.0
+				}
+
+				x2 := math.lerp(x1, x3, group_state.t_interp)
+				y2 := math.lerp(y1, y3, group_state.t_interp)
+
+				yellow_position := rl.Vector2{x2, y2}
+				green_position := rl.Vector2{x1, y1}
+				red_position := rl.Vector2{x3, y3}
+
+				distance_to_green := euclidean_distance(yellow_position, green_position)
+				distance_to_red := euclidean_distance(yellow_position, red_position)
+
+				if distance_to_green < (radius_green + radius_yellow) {
+					group_state.direction = 1.0 // Change direction when touching the green circle
+				}
+				if distance_to_red < (radius_red + radius_yellow) {
+					group_state.direction = -1.0 // Change direction when touching the red circle
+				}
+
+				rl.DrawCircleV(yellow_position, radius_yellow, rl.YELLOW)
+
+				rl.DrawLineV(green_position, yellow_position, rl.BLACK)
+				rl.DrawLineV(yellow_position, red_position, rl.BLACK)
 			}
-
-			group_state := &state.groups[group_index]
-
-			radius_green := env.screen_width * 0.04
-			orbit_green := env.screen_width * 0.25
-			x1, y1 := orbit_circle(
-				state.env,
-				state.t,
-				radius_green,
-				orbit_green,
-				group_offset_x,
-				rl.GREEN,
-			)
-
-			radius_red := env.screen_width * 0.01
-			orbit_red := env.screen_width * 0.13
-			x3, y3 := orbit_circle(
-				state.env,
-				state.t,
-				radius_red,
-				orbit_red,
-				group_offset_x,
-				rl.RED,
-			)
-
-			radius_yellow := env.screen_width * 0.01
-			group_state.t_interp += group_state.direction * 0.01
-			if group_state.t_interp >= 1.0 {
-				group_state.t_interp = 1.0
-				group_state.direction = -1.0
-			} else if group_state.t_interp <= 0.0 {
-				group_state.t_interp = 0.0
-				group_state.direction = 1.0
-			}
-
-			x2 := math.lerp(x1, x3, group_state.t_interp)
-			y2 := math.lerp(y1, y3, group_state.t_interp)
-
-			yellow_position := rl.Vector2{x2, y2}
-			green_position := rl.Vector2{x1, y1}
-			red_position := rl.Vector2{x3, y3}
-
-			distance_to_green := euclidean_distance(yellow_position, green_position)
-			distance_to_red := euclidean_distance(yellow_position, red_position)
-
-			if distance_to_green < (radius_green + radius_yellow) {
-				group_state.direction = 1.0 // Change direction when touching the green circle
-			}
-			if distance_to_red < (radius_red + radius_yellow) {
-				group_state.direction = -1.0 // Change direction when touching the red circle
-			}
-
-			rl.DrawCircleV(yellow_position, radius_yellow, rl.YELLOW)
-
-			rl.DrawLineV(green_position, yellow_position, rl.BLACK)
-			rl.DrawLineV(yellow_position, red_position, rl.BLACK)
 		}
 
 		rl.EndMode2D()
 	}
-
 
 }
 

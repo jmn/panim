@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:math"
 import "core:mem"
 import rl "vendor:raylib"
-NUM_GROUPS :: 20
+NUM_GROUPS :: 100 // Increase the number of groups to fill the screen
 
 // Define the environment structure
 Env :: struct {
@@ -30,7 +30,6 @@ GroupState :: struct {
 	t_interp:  f32,
 	direction: f32,
 }
-
 
 // Plugin state structure
 plugin_state :: struct {
@@ -76,48 +75,16 @@ plug_post_reload :: proc "c" (prev_state: rawptr) {
 	}
 }
 
-
-// orbit_circle :: proc(env: Env, t: f32, radius: f32, orbit: f32, color: rl.Color) {
-// 	angle := 2.0 * math.PI * t
-// 	cx := env.screen_width * 0.5
-// 	cy := env.screen_height * 0.5
-// 	px := cx + math.cos(angle) * orbit
-// 	py := cy + math.sin(angle) * orbit
-// 	rl.DrawCircleV({px, py}, radius, color)
-// }
-//
-orbit_circle :: proc(
-	env: Env,
-	t: f32,
-	radius: f32,
-	orbit: f32,
-	offset_x: f32,
-	color: rl.Color,
-) -> (
-	f32,
-	f32,
-) {
-	angle := 2.0 * math.PI * t
-	cx := env.screen_width * 0.5
-	cy := env.screen_height * 0.5
-	px := cx + math.cos(angle) * orbit + offset_x
-	py := cy + math.sin(angle) * orbit
-	rl.DrawCircleV({px, py}, radius, color)
-	return px, py
-}
-
 euclidean_distance :: proc(a, b: rl.Vector2) -> f32 {
 	dx := a.x - b.x
 	dy := a.y - b.y
 	return math.sqrt(dx * dx + dy * dy)
 }
 
-
 @(export)
 plug_update :: proc "c" (env: Env) {
 	context = runtime.default_context()
 	state.env = env
-	// rl.TraceLog(.INFO, to_string(env))
 
 	state.frame_count += 1
 	if state.frame_count > 100 {
@@ -128,60 +95,64 @@ plug_update :: proc "c" (env: Env) {
 
 	// Drawing
 	{
+		// Set camera zoom to fit the entire grid
 		if state.camera.zoom == 0.0 {
 			state.camera = rl.Camera2D {
-				target   = {env.screen_width * 0.5, env.screen_height * 0.5},
-				offset   = {env.screen_width * 0.5, env.screen_height * 0.5},
+				target   = rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
+				offset   = rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
 				rotation = 0.0,
-				zoom     = 0.2, // Set a zoom-in level
+				zoom     = 0.3, // Adjusted zoom to make everything visible on the screen
 			}
 		}
 
-		// Zoom in further but keep a zoomed-out effect
-		state.camera.zoom = 0.2 + 0.1 * math.sin(2.0 * math.PI * state.t)
+		// Set a fixed camera zoom level (no dynamic zooming)
+		state.camera.zoom = 0.3
 
 		rl.BeginMode2D(state.camera)
 
 		rl.ClearBackground(rl.BLUE)
 
-		num_groups_per_row := 5
-		num_rows := 4
-		group_spacing := env.screen_width * 0.25 // Tighter spacing
+		// Number of rows and groups per row (8 groups per row, multiple rows)
+		num_groups_per_row := 8 // 8 groups per row
+		num_rows := 6 // 6 rows to fill the screen
 
-		// Loop through each row and column to position the sets
+		// Calculate the spacing between groups horizontally and vertically
+		group_spacing_x := env.screen_width / f32(num_groups_per_row) // Horizontal spacing between groups
+		group_spacing_y := env.screen_height / f32(num_rows) // Vertical spacing between groups
+
+		// Loop through each row and column to position the groups
 		for row in 0 ..< num_rows {
 			for col in 0 ..< num_groups_per_row {
 				group_index := row * num_groups_per_row + col
-				group_offset_x := f32(col) * group_spacing - env.screen_width * 0.15 // X offset for each set
-				group_offset_y := f32(row) * group_spacing - env.screen_height * 0.15 // Y offset for each set
+				// Calculate the offset for each group
+				group_offset_x :=
+					f32(col) * group_spacing_x - env.screen_width * 0.5 + group_spacing_x * 0.5
+				group_offset_y :=
+					f32(row) * group_spacing_y - env.screen_height * 0.5 + group_spacing_y * 0.5
 
+				// Ensure the state.groups array has enough groups to handle the index
 				if len(state.groups) <= group_index {
 					append(&state.groups, GroupState{t_interp = 0.5, direction = 1.0})
 				}
 
 				group_state := &state.groups[group_index]
 
+				// Define sizes for the circles
 				radius_green := env.screen_width * 0.04
-				orbit_green := env.screen_width * 0.25
-				x1, y1 := orbit_circle(
-					state.env,
-					state.t,
-					radius_green,
-					orbit_green,
-					group_offset_x,
-					rl.GREEN,
-				)
+				orbit_green := env.screen_width * 0.15 // Smaller orbit to fit within the screen
+				green_angle := state.t
+				green_position := rl.Vector2 {
+					env.screen_width * 0.5 + math.cos(green_angle) * orbit_green + group_offset_x,
+					env.screen_height * 0.5 + math.sin(green_angle) * orbit_green + group_offset_y,
+				}
 
 				radius_red := env.screen_width * 0.01
-				orbit_red := env.screen_width * 0.13
-				x3, y3 := orbit_circle(
-					state.env,
-					state.t,
-					radius_red,
-					orbit_red,
-					group_offset_x,
-					rl.RED,
-				)
+				orbit_red := env.screen_width * 0.07 // Smaller orbit to fit within the screen
+				red_angle := state.t * 1.5 // Faster orbit for red circle
+				red_position := rl.Vector2 {
+					env.screen_width * 0.5 + math.cos(red_angle) * orbit_red + group_offset_x,
+					env.screen_height * 0.5 + math.sin(red_angle) * orbit_red + group_offset_y,
+				}
 
 				radius_yellow := env.screen_width * 0.01
 				group_state.t_interp += group_state.direction * 0.01
@@ -193,13 +164,13 @@ plug_update :: proc "c" (env: Env) {
 					group_state.direction = 1.0
 				}
 
-				x2 := math.lerp(x1, x3, group_state.t_interp)
-				y2 := math.lerp(y1, y3, group_state.t_interp)
+				// Interpolate between the green and red positions for the yellow circle
+				x_yellow := math.lerp(green_position.x, red_position.x, group_state.t_interp)
+				y_yellow := math.lerp(green_position.y, red_position.y, group_state.t_interp)
 
-				yellow_position := rl.Vector2{x2, y2}
-				green_position := rl.Vector2{x1, y1}
-				red_position := rl.Vector2{x3, y3}
+				yellow_position := rl.Vector2{x_yellow, y_yellow}
 
+				// Calculate distances to detect collisions and change directions
 				distance_to_green := euclidean_distance(yellow_position, green_position)
 				distance_to_red := euclidean_distance(yellow_position, red_position)
 
@@ -210,8 +181,10 @@ plug_update :: proc "c" (env: Env) {
 					group_state.direction = -1.0 // Change direction when touching the red circle
 				}
 
+				// Draw the circles and lines between the green, yellow, and red positions
+				rl.DrawCircleV(green_position, radius_green, rl.GREEN)
+				rl.DrawCircleV(red_position, radius_red, rl.RED)
 				rl.DrawCircleV(yellow_position, radius_yellow, rl.YELLOW)
-
 				rl.DrawLineV(green_position, yellow_position, rl.BLACK)
 				rl.DrawLineV(yellow_position, red_position, rl.BLACK)
 			}
@@ -219,7 +192,6 @@ plug_update :: proc "c" (env: Env) {
 
 		rl.EndMode2D()
 	}
-
 }
 
 @(export)

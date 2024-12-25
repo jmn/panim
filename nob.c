@@ -35,6 +35,19 @@ void libs(Nob_Cmd *cmd)
     nob_cmd_append(cmd, "-l:libraylib.so", "-lm", "-ldl", "-lpthread");
 }
 
+bool build_plug_odin(bool force, Nob_Cmd *cmd, const char *source_path, const char *output_path)
+{
+    int rebuild_is_needed = nob_needs_rebuild1(output_path, source_path);
+    if (rebuild_is_needed < 0) return false;
+    if (force || rebuild_is_needed) {
+        nob_cmd_append(cmd, "odin", "build", source_path, "-file", "-build-mode:dll", nob_temp_sprintf("-out:%s", output_path));
+        if (!nob_cmd_run_sync_and_reset(cmd)) return false;
+    }
+
+    nob_log(NOB_INFO, "%s is up-to-date", output_path);
+    return true;
+}
+
 bool build_plug_c3(bool force, Nob_Cmd *cmd, const char *output_path, const char **source_paths, size_t source_paths_count)
 {
     int rebuild_is_needed = nob_needs_rebuild(nob_temp_sprintf("%s.so", output_path), source_paths, source_paths_count);
@@ -138,8 +151,9 @@ int main(int argc, char **argv)
         };
         size_t source_paths_count = NOB_ARRAY_LEN(source_paths);
 
-        if (!build_plug_c3(force, &cmd, output_path, source_paths, source_paths_count)) return 1;
+        // if (!build_plug_c3(force, &cmd, output_path, source_paths, source_paths_count)) return 1;
     }
+    if (!build_plug_odin(force, &cmd, PLUGS_DIR"odin/plug.odin", BUILD_DIR"libodin.so")) return 1;
 
     {
         const char *output_path = BUILD_DIR"panim";

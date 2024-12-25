@@ -92,16 +92,44 @@ plug_update :: proc "c" (env: Env) {
 	{
 		rl.ClearBackground(rl.BLUE)
 
+		// Initialize an array to store the positions of the circles
+		positions := make([dynamic]rl.Vector2)
+
+		// First circle (green)
 		radius := env.screen_width * 0.04
 		orbit := env.screen_width * 0.25
-		orbit_circle(state.env, state.t, radius, orbit, rl.RED)
+		// Calculate the position using orbit_circle
+		orbit_circle(state.env, state.t, radius, orbit, rl.GREEN)
+		x1 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
+		y1 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
+		append(&positions, rl.Vector2{x1, y1})
 
+		// Second circle (red, oscillating up and down)
 		radius = env.screen_width * 0.02
 		orbit = env.screen_width * 0.10
+		// Calculate the x position using orbit_circle
 		orbit_circle(state.env, state.t, radius, orbit, rl.RED)
+		// Oscillating y position based on sine wave
+		y2 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
+		// We keep x2 fixed at the same position as the first circle
+		x2 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
+		append(&positions, rl.Vector2{x2, y2})
 
+		// Third circle (red)
+		radius = env.screen_width * 0.01
+		orbit = env.screen_width * 0.13
+		orbit_circle(state.env, state.t, radius, orbit, rl.RED)
+		x3 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
+		y3 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
+		append(&positions, rl.Vector2{x3, y3})
+
+		// Draw lines between each circle
+		for i in 0 ..< len(positions) - 1 {
+			rl.DrawLineV(positions[i], positions[i + 1], rl.BLACK)
+		}
 	}
 }
+
 
 @(export)
 plug_reset :: proc "c" () {

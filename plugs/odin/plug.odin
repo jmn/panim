@@ -33,6 +33,8 @@ plugin_state :: struct {
 	frame_count: int,
 	t:           f32,
 	env:         Env,
+	direction:   f32,
+	t_interp:    f32,
 }
 
 state: plugin_state = plugin_state {
@@ -95,41 +97,68 @@ plug_update :: proc "c" (env: Env) {
 		// Initialize an array to store the positions of the circles
 		positions := make([dynamic]rl.Vector2)
 
+		// Static variables for state
+		if state.direction == 0.0 {
+			state.direction = 1.0 // Initialize direction to move toward the red circle
+		}
+
 		// First circle (green)
-		radius := env.screen_width * 0.04
+		radius_green := env.screen_width * 0.04
 		orbit := env.screen_width * 0.25
-		// Calculate the position using orbit_circle
-		orbit_circle(state.env, state.t, radius, orbit, rl.GREEN)
 		x1 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
 		y1 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
+		orbit_circle(state.env, state.t, radius_green, orbit, rl.GREEN)
 		append(&positions, rl.Vector2{x1, y1})
 
-		// Second circle (red, oscillating up and down)
-		radius = env.screen_width * 0.02
-		orbit = env.screen_width * 0.10
-		// Calculate the x position using orbit_circle
-		orbit_circle(state.env, state.t, radius, orbit, rl.RED)
-		// Oscillating y position based on sine wave
-		y2 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
-		// We keep x2 fixed at the same position as the first circle
-		x2 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
-		append(&positions, rl.Vector2{x2, y2})
-
 		// Third circle (red)
-		radius = env.screen_width * 0.01
+		radius_red := env.screen_width * 0.01
 		orbit = env.screen_width * 0.13
-		orbit_circle(state.env, state.t, radius, orbit, rl.RED)
 		x3 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
 		y3 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
+		orbit_circle(state.env, state.t, radius_red, orbit, rl.RED)
 		append(&positions, rl.Vector2{x3, y3})
+
+		// Second circle (yellow, interpolates along the line between the first and third)
+		radius_yellow := env.screen_width * 0.012
+		if state.t_interp == 0.0 {
+			state.t_interp = 0.5 // Start yellow circle in the middle
+		}
+
+		t_interp := state.t_interp
+		t_interp += state.direction * 0.01 // Adjust interpolation based on direction
+		if t_interp >= 1.0 {
+			t_interp = 1.0
+			state.direction = -1.0 // Reverse direction when reaching the red circle
+		} else if t_interp <= 0.0 {
+			t_interp = 0.0
+			state.direction = 1.0 // Reverse direction when reaching the green circle
+		}
+		state.t_interp = t_interp
+
+		// Calculate the position of the yellow circle
+		x2 := math.lerp(x1, x3, t_interp)
+		y2 := math.lerp(y1, y3, t_interp)
+
+		// Check for collision with green and red circles
+		dist_to_green := math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
+		dist_to_red := math.sqrt((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3))
+		if dist_to_green <= (radius_yellow + radius_green) {
+			state.direction = 1.0 // Move toward the red circle
+		} else if dist_to_red <= (radius_yellow + radius_red) {
+			state.direction = -1.0 // Move toward the green circle
+		}
+
+		// Draw the yellow circle
+		append(&positions, rl.Vector2{x2, y2})
+		rl.DrawCircleV({x2, y2}, radius_yellow, rl.YELLOW)
 
 		// Draw lines between each circle
 		for i in 0 ..< len(positions) - 1 {
 			rl.DrawLineV(positions[i], positions[i + 1], rl.BLACK)
 		}
 	}
-}
 
+}
 
 @(export)
 plug_reset :: proc "c" () {

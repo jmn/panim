@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:math"
 import "core:mem"
 import rl "vendor:raylib"
+NUM_GROUPS :: 20
 
 // Define the environment structure
 Env :: struct {
@@ -25,6 +26,11 @@ to_string :: proc(env: Env) -> cstring {
 	)
 }
 
+GroupState :: struct {
+	t_interp:  f32,
+	direction: f32,
+}
+
 
 // Plugin state structure
 plugin_state :: struct {
@@ -35,6 +41,8 @@ plugin_state :: struct {
 	env:         Env,
 	direction:   f32,
 	t_interp:    f32,
+	groups:      [dynamic]GroupState,
+	camera:      rl.Camera2D,
 }
 
 state: plugin_state = plugin_state {
@@ -47,10 +55,12 @@ state: plugin_state = plugin_state {
 // Plugin functions implementation
 @(export)
 plug_init :: proc "c" () {
+	context = runtime.default_context()
 	state.initialized = true
 	state.finished = false
 	state.frame_count = 0
 	state.env = Env{}
+	state.groups = make([dynamic]GroupState, NUM_GROUPS)
 }
 
 @(export)
@@ -67,13 +77,39 @@ plug_post_reload :: proc "c" (prev_state: rawptr) {
 }
 
 
-orbit_circle :: proc(env: Env, t: f32, radius: f32, orbit: f32, color: rl.Color) {
+// orbit_circle :: proc(env: Env, t: f32, radius: f32, orbit: f32, color: rl.Color) {
+// 	angle := 2.0 * math.PI * t
+// 	cx := env.screen_width * 0.5
+// 	cy := env.screen_height * 0.5
+// 	px := cx + math.cos(angle) * orbit
+// 	py := cy + math.sin(angle) * orbit
+// 	rl.DrawCircleV({px, py}, radius, color)
+// }
+//
+orbit_circle :: proc(
+	env: Env,
+	t: f32,
+	radius: f32,
+	orbit: f32,
+	offset_x: f32,
+	color: rl.Color,
+) -> (
+	f32,
+	f32,
+) {
 	angle := 2.0 * math.PI * t
 	cx := env.screen_width * 0.5
 	cy := env.screen_height * 0.5
-	px := cx + math.cos(angle) * orbit
+	px := cx + math.cos(angle) * orbit + offset_x
 	py := cy + math.sin(angle) * orbit
 	rl.DrawCircleV({px, py}, radius, color)
+	return px, py
+}
+
+euclidean_distance :: proc(a, b: rl.Vector2) -> f32 {
+	dx := a.x - b.x
+	dy := a.y - b.y
+	return math.sqrt(dx * dx + dy * dy)
 }
 
 
@@ -91,72 +127,98 @@ plug_update :: proc "c" (env: Env) {
 	state.t += 0.01
 
 	// Drawing
+
 	{
+		if state.camera.zoom == 0.0 {
+			state.camera = rl.Camera2D {
+				target   = {env.screen_width * 0.5, env.screen_height * 0.5}, // Initial camera target at center
+				offset   = {env.screen_width * 0.5, env.screen_height * 0.5},
+				rotation = 0.0,
+				zoom     = 0.2, // Set a base zoom-in level (further zoomed in)
+			}
+		}
+
+		// Zoom in further but keep a zoomed-out effect
+		state.camera.zoom = 0.2 + 0.1 * math.sin(2.0 * math.PI * state.t)
+
+		// Shift the camera to center around the 10th set (group 9)
+		target_offset_x := f32(9) * (env.screen_width * 0.25) - env.screen_width * 0.15 // Center around the 10th group
+		state.camera.target = {env.screen_width * 0.5 + target_offset_x, env.screen_height * 0.5}
+
+		rl.BeginMode2D(state.camera)
+
 		rl.ClearBackground(rl.BLUE)
 
-		// Initialize an array to store the positions of the circles
-		positions := make([dynamic]rl.Vector2)
+		num_groups := 20
+		group_spacing := env.screen_width * 0.25 // Tighter spacing
 
-		// Static variables for state
-		if state.direction == 0.0 {
-			state.direction = 1.0 // Initialize direction to move toward the red circle
+		for group_index in 0 ..< num_groups {
+			group_offset_x := f32(group_index) * group_spacing - env.screen_width * 0.15 // Move first set more to the left
+
+			if len(state.groups) <= group_index {
+				append(&state.groups, GroupState{t_interp = 0.5, direction = 1.0})
+			}
+
+			group_state := &state.groups[group_index]
+
+			radius_green := env.screen_width * 0.04
+			orbit_green := env.screen_width * 0.25
+			x1, y1 := orbit_circle(
+				state.env,
+				state.t,
+				radius_green,
+				orbit_green,
+				group_offset_x,
+				rl.GREEN,
+			)
+
+			radius_red := env.screen_width * 0.01
+			orbit_red := env.screen_width * 0.13
+			x3, y3 := orbit_circle(
+				state.env,
+				state.t,
+				radius_red,
+				orbit_red,
+				group_offset_x,
+				rl.RED,
+			)
+
+			radius_yellow := env.screen_width * 0.01
+			group_state.t_interp += group_state.direction * 0.01
+			if group_state.t_interp >= 1.0 {
+				group_state.t_interp = 1.0
+				group_state.direction = -1.0
+			} else if group_state.t_interp <= 0.0 {
+				group_state.t_interp = 0.0
+				group_state.direction = 1.0
+			}
+
+			x2 := math.lerp(x1, x3, group_state.t_interp)
+			y2 := math.lerp(y1, y3, group_state.t_interp)
+
+			yellow_position := rl.Vector2{x2, y2}
+			green_position := rl.Vector2{x1, y1}
+			red_position := rl.Vector2{x3, y3}
+
+			distance_to_green := euclidean_distance(yellow_position, green_position)
+			distance_to_red := euclidean_distance(yellow_position, red_position)
+
+			if distance_to_green < (radius_green + radius_yellow) {
+				group_state.direction = 1.0 // Change direction when touching the green circle
+			}
+			if distance_to_red < (radius_red + radius_yellow) {
+				group_state.direction = -1.0 // Change direction when touching the red circle
+			}
+
+			rl.DrawCircleV(yellow_position, radius_yellow, rl.YELLOW)
+
+			rl.DrawLineV(green_position, yellow_position, rl.BLACK)
+			rl.DrawLineV(yellow_position, red_position, rl.BLACK)
 		}
 
-		// First circle (green)
-		radius_green := env.screen_width * 0.04
-		orbit := env.screen_width * 0.25
-		x1 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
-		y1 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
-		orbit_circle(state.env, state.t, radius_green, orbit, rl.GREEN)
-		append(&positions, rl.Vector2{x1, y1})
-
-		// Third circle (red)
-		radius_red := env.screen_width * 0.01
-		orbit = env.screen_width * 0.13
-		x3 := env.screen_width * 0.5 + math.cos(2.0 * math.PI * state.t) * orbit
-		y3 := env.screen_height * 0.5 + math.sin(2.0 * math.PI * state.t) * orbit
-		orbit_circle(state.env, state.t, radius_red, orbit, rl.RED)
-		append(&positions, rl.Vector2{x3, y3})
-
-		// Second circle (yellow, interpolates along the line between the first and third)
-		radius_yellow := env.screen_width * 0.012
-		if state.t_interp == 0.0 {
-			state.t_interp = 0.5 // Start yellow circle in the middle
-		}
-
-		t_interp := state.t_interp
-		t_interp += state.direction * 0.01 // Adjust interpolation based on direction
-		if t_interp >= 1.0 {
-			t_interp = 1.0
-			state.direction = -1.0 // Reverse direction when reaching the red circle
-		} else if t_interp <= 0.0 {
-			t_interp = 0.0
-			state.direction = 1.0 // Reverse direction when reaching the green circle
-		}
-		state.t_interp = t_interp
-
-		// Calculate the position of the yellow circle
-		x2 := math.lerp(x1, x3, t_interp)
-		y2 := math.lerp(y1, y3, t_interp)
-
-		// Check for collision with green and red circles
-		dist_to_green := math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
-		dist_to_red := math.sqrt((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3))
-		if dist_to_green <= (radius_yellow + radius_green) {
-			state.direction = 1.0 // Move toward the red circle
-		} else if dist_to_red <= (radius_yellow + radius_red) {
-			state.direction = -1.0 // Move toward the green circle
-		}
-
-		// Draw the yellow circle
-		append(&positions, rl.Vector2{x2, y2})
-		rl.DrawCircleV({x2, y2}, radius_yellow, rl.YELLOW)
-
-		// Draw lines between each circle
-		for i in 0 ..< len(positions) - 1 {
-			rl.DrawLineV(positions[i], positions[i + 1], rl.BLACK)
-		}
+		rl.EndMode2D()
 	}
+
 
 }
 

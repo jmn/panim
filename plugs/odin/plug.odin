@@ -133,7 +133,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	// Calculate camera position using trigonometric functions
 	cam_x := f32(radius) * f32(math.cos(angle))
-	cam_z: f32 = f32(radius) * f32(math.sin(angle))
+	cam_z := f32(radius) * f32(math.sin(angle))
 	cam_y: f32 = 2.0 // Fixed height for camera's y-axis position
 
 	// Define the camera position and the target (the center of the cube)
@@ -149,12 +149,18 @@ scene3_update :: proc(_: rawptr) -> bool {
 	rl.BeginMode3D(camera)
 
 	// Draw a colorful cube at the center
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255}) // Red face
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, -2.0, 2.0, 2.0, rl.Color{0, 255, 0, 255}) // Green face
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, -2.0, 2.0, rl.Color{0, 0, 255, 255}) // Blue face
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, -2.0, rl.Color{255, 255, 0, 255}) // Yellow face
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, -2.0, -2.0, 2.0, rl.Color{255, 0, 255, 255}) // Magenta face
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, -2.0, -2.0, rl.Color{0, 255, 255, 255}) // Cyan face
+	// Draw the front face (red)
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 1.0}, 2.0, 2.0, 0.1, rl.Color{255, 0, 0, 255})
+	// Draw the back face (green)
+	rl.DrawCube(rl.Vector3{0.0, 0.0, -1.0}, 2.0, 2.0, 0.1, rl.Color{0, 255, 0, 255})
+	// Draw the left face (blue)
+	rl.DrawCube(rl.Vector3{-1.0, 0.0, 0.0}, 0.1, 2.0, 2.0, rl.Color{0, 0, 255, 255})
+	// Draw the right face (yellow)
+	rl.DrawCube(rl.Vector3{1.0, 0.0, 0.0}, 0.1, 2.0, 2.0, rl.Color{255, 255, 0, 255})
+	// Draw the top face (magenta)
+	rl.DrawCube(rl.Vector3{0.0, 1.0, 0.0}, 2.0, 0.1, 2.0, rl.Color{255, 0, 255, 255})
+	// Draw the bottom face (cyan)
+	rl.DrawCube(rl.Vector3{0.0, -1.0, 0.0}, 2.0, 0.1, 2.0, rl.Color{0, 255, 255, 255})
 
 	// End drawing in 3D mode
 	rl.EndMode3D()

@@ -58,7 +58,7 @@ scene1_update :: proc(_: rawptr) -> bool {
 	rl.DrawCircle(i32(400 + int(math.sin(state^.t) * 100)), 300, 50, rl.Color{0, 255, 0, 255})
 
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	rl.TraceLog(.INFO, fmt.caprintf("el %.10f", elapsed_time))
+	// rl.TraceLog(.INFO, fmt.caprintf("el %.10f", elapsed_time))
 
 	if elapsed_time > 5.0 {
 		state^.scene_start_time = -1.0
@@ -96,7 +96,7 @@ scene2_update :: proc(_: rawptr) -> bool {
 	rl.DrawCircle(i32(x_pos), i32(y_pos), 30, rl.Color{0, 255, 255, 255})
 
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	rl.TraceLog(.INFO, fmt.caprintf("el %.10f", elapsed_time))
+	// rl.TraceLog(.INFO, fmt.caprintf("el %.10f", elapsed_time))
 
 	if elapsed_time > 5.0 {
 		state^.scene_start_time = -1.0
@@ -121,11 +121,40 @@ scene3_update :: proc(_: rawptr) -> bool {
 		state^.scene_start_time = rl.GetTime()
 	}
 
-	rl.ClearBackground(rl.Color{70, 70, 70, 255}) // Scene 3 Background
-	rl.DrawText("Scene 3", 10, 10, 20, rl.Color{255, 255, 255, 255})
+	// Calculate the time-based camera rotation angle
+	angle := rl.GetTime() * 0.5 // Camera rotates around the cube at 0.5 radians per second
 
+	// Camera setup: Orbit around the cube
+	camera := rl.Camera3D {
+		position   = rl.Vector3 {
+			f32(10.0 * math.cos(angle)), // X-position rotates in a circle
+			10.0, // Keep the Y-position fixed (height of the camera)
+			f32(10.0 * math.sin(angle)), // Z-position rotates in a circle
+		},
+		target     = rl.Vector3{0.0, 0.0, 0.0}, // Camera always looks at the center of the scene (the cube)
+		up         = rl.Vector3{0.0, 1.0, 0.0}, // Up direction for the camera
+		fovy       = 45.0, // Field of view
+		projection = .PERSPECTIVE, // Perspective projection
+	}
+
+	rl.BeginDrawing()
+	rl.ClearBackground(rl.Color{70, 70, 70, 255}) // Set background color
+
+	rl.BeginMode3D(camera) // Start 3D mode
+
+	// Draw the cube at the origin (center of the scene)
+	cube_position := rl.Vector3{0.0, 0.0, 0.0}
+	rl.DrawCube(cube_position, 2.0, 2.0, 2.0, rl.Color{0, 255, 255, 255}) // Cube
+	rl.DrawCubeWires(cube_position, 2.0, 2.0, 2.0, rl.Color{255, 255, 255, 255}) // Wireframe
+
+	rl.EndMode3D() // End 3D mode
+
+	rl.DrawText("Scene 3: Spinning Camera Around Cube", 10, 10, 20, rl.Color{255, 255, 255, 255}) // Overlay text
+	rl.EndDrawing()
+
+	// Calculate elapsed time and check for scene completion
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	rl.TraceLog(.INFO, fmt.caprintf("el %.10f", elapsed_time))
+	// rl.TraceLog(.INFO, fmt.caprintf("Elapsed Time: %.2f seconds", elapsed_time))
 
 	if elapsed_time > 5.0 {
 		state^.scene_start_time = -1.0
@@ -135,6 +164,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	return false
 }
+
 
 scene3_cleanup :: proc(_: rawptr) {
 	fmt.printf("Scene 3 cleanup\n")
@@ -156,6 +186,7 @@ scene3: Scene = Scene {
 @(export)
 plug_init :: proc "c" () {
 	context = runtime.default_context()
+	rl.SetTargetFPS(60)
 
 	state = plugin_state {
 		initialized      = true,

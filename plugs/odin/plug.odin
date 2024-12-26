@@ -30,6 +30,7 @@ plugin_state :: struct {
 	t:                f64,
 	scene_start_time: f64, // Add scene start time here
 	env:              Env,
+	shader:           rl.Shader,
 }
 
 Manager :: struct {
@@ -134,7 +135,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 	// Calculate camera position using trigonometric functions
 	cam_x := f32(radius) * f32(math.cos(angle))
 	cam_z := f32(radius) * f32(math.sin(angle))
-	cam_y: f32 = 2.0 // Fixed height for camera's y-axis position
+	cam_y := f32(2.0) // Fixed height for camera's y-axis position
 
 	// Define the camera position and the target (the center of the cube)
 	camera := rl.Camera3D {
@@ -148,19 +149,41 @@ scene3_update :: proc(_: rawptr) -> bool {
 	// Begin drawing in 3D mode
 	rl.BeginMode3D(camera)
 
-	// Draw a colorful cube at the center
-	// Draw the front face (red)
-	rl.DrawCube(rl.Vector3{0.0, 0.0, 1.0}, 2.0, 2.0, 0.1, rl.Color{255, 0, 0, 255})
-	// Draw the back face (green)
-	rl.DrawCube(rl.Vector3{0.0, 0.0, -1.0}, 2.0, 2.0, 0.1, rl.Color{0, 255, 0, 255})
-	// Draw the left face (blue)
-	rl.DrawCube(rl.Vector3{-1.0, 0.0, 0.0}, 0.1, 2.0, 2.0, rl.Color{0, 0, 255, 255})
-	// Draw the right face (yellow)
-	rl.DrawCube(rl.Vector3{1.0, 0.0, 0.0}, 0.1, 2.0, 2.0, rl.Color{255, 255, 0, 255})
-	// Draw the top face (magenta)
-	rl.DrawCube(rl.Vector3{0.0, 1.0, 0.0}, 2.0, 0.1, 2.0, rl.Color{255, 0, 255, 255})
-	// Draw the bottom face (cyan)
-	rl.DrawCube(rl.Vector3{0.0, -1.0, 0.0}, 2.0, 0.1, 2.0, rl.Color{0, 255, 255, 255})
+	// If shader is being used, ensure uniforms are set correctly:
+	if state.shader.id != 0 {
+		rl.BeginShaderMode(state.shader)
+		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
+		view := rl.MatrixLookAt(
+			rl.Vector3{cam_x, cam_y, cam_z},
+			rl.Vector3{0.0, 0.0, 0.0},
+			rl.Vector3{0.0, 1.0, 0.0},
+		)
+		projection := rl.MatrixPerspective(
+			45.0,
+			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
+			0.1,
+			100.0,
+		)
+
+		// Use SetShaderValueMatrix to set uniform matrices
+		modelLoc := rl.GetShaderLocation(state.shader, "model")
+		viewLoc := rl.GetShaderLocation(state.shader, "view")
+		projectionLoc := rl.GetShaderLocation(state.shader, "projection")
+
+		// Set the matrices as uniforms in the shader
+		rl.SetShaderValueMatrix(state.shader, modelLoc, model)
+		rl.SetShaderValueMatrix(state.shader, viewLoc, view)
+		rl.SetShaderValueMatrix(state.shader, projectionLoc, projection)
+	}
+
+	// Apply rotation to the cube (rotating around the center)
+	rotation_matrix := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
+
+	// Cube's center (we'll rotate it at the origin)
+	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
+
+	// Draw the cube (it's a single object)
+	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255}) // Cube with red color
 
 	// End drawing in 3D mode
 	rl.EndMode3D()
@@ -178,6 +201,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 scene3_cleanup :: proc(_: rawptr) {
 	fmt.printf("Scene 3 cleanup\n")
+	rl.UnloadShader(state.shader)
 }
 
 scene1: Scene = Scene {
@@ -198,6 +222,11 @@ plug_init :: proc "c" () {
 	context = runtime.default_context()
 	rl.SetTargetFPS(60)
 
+	shader := rl.LoadShader(
+		"./assets/shaders/vertex_shader.glsl",
+		"./assets/shaders/fragment_shader.glsl",
+	)
+
 	state = plugin_state {
 		initialized      = true,
 		finished         = false,
@@ -205,6 +234,7 @@ plug_init :: proc "c" () {
 		t                = 0.0,
 		scene_start_time = -1.0,
 		env              = Env{},
+		shader           = shader,
 	}
 
 	manager = Manager {
@@ -224,6 +254,7 @@ plug_init :: proc "c" () {
 		},
 	}
 }
+
 
 @(export)
 plug_update :: proc "c" (env: Env) {

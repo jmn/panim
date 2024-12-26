@@ -113,107 +113,56 @@ scene2_cleanup :: proc(_: rawptr) {
 // Scene 3 Update and Cleanup (New)
 scene3_update :: proc(_: rawptr) -> bool {
 	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return false
+	}
+
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
 	}
 
-	// Calculate the time-based camera rotation angle
-	angle := rl.GetTime() * 0.5 // Camera rotates around the cube at 0.5 radians per second
+	// Set background color
+	rl.ClearBackground(rl.Color{50, 50, 50, 255})
 
-	// Camera setup: Orbit around the cube
+	// Update the rotation angle
+	state^.t += 0.01 // Control rotation speed
+
+	// Calculate the camera's position around the cube
+	radius := 5.0 // Distance of camera from the cube
+	angle := state^.t // Rotation angle
+
+	// Calculate camera position using trigonometric functions
+	cam_x := f32(radius) * f32(math.cos(angle))
+	cam_z: f32 = f32(radius) * f32(math.sin(angle))
+	cam_y: f32 = 2.0 // Fixed height for camera's y-axis position
+
+	// Define the camera position and the target (the center of the cube)
 	camera := rl.Camera3D {
-		position   = rl.Vector3 {
-			f32(10.0 * math.cos(angle)), // X-position rotates in a circle
-			f32(10.0), // Keep the Y-position fixed (height of the camera)
-			f32(10.0 * math.sin(angle)), // Z-position rotates in a circle
-		},
-		target     = rl.Vector3{0.0, 0.0, 0.0}, // Camera always looks at the center of the scene (the cube)
-		up         = rl.Vector3{0.0, 1.0, 0.0}, // Up direction for the camera
-		fovy       = 45.0, // Field of view
-		projection = .PERSPECTIVE, // Perspective projection
+		rl.Vector3{cam_x, cam_y, cam_z},
+		rl.Vector3{0.0, 0.0, 0.0}, // Cube is at the center
+		rl.Vector3{0.0, 1.0, 0.0}, // The 'up' direction is the y-axis
+		45.0, // Field of view
+		.PERSPECTIVE,
 	}
 
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.Color{70, 70, 70, 255}) // Set background color
+	// Begin drawing in 3D mode
+	rl.BeginMode3D(camera)
 
-	rl.BeginMode3D(camera) // Start 3D mode
+	// Draw a colorful cube at the center
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255}) // Red face
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, -2.0, 2.0, 2.0, rl.Color{0, 255, 0, 255}) // Green face
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, -2.0, 2.0, rl.Color{0, 0, 255, 255}) // Blue face
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, -2.0, rl.Color{255, 255, 0, 255}) // Yellow face
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, -2.0, -2.0, 2.0, rl.Color{255, 0, 255, 255}) // Magenta face
+	rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, -2.0, -2.0, rl.Color{0, 255, 255, 255}) // Cyan face
 
-	// Draw each face of the cube with different colors
-	cube_size := f32(2.0) // Cube size wrapped in f32
-	cube_position := rl.Vector3{0.0, 0.0, 0.0} // Center of the cube
+	// End drawing in 3D mode
+	rl.EndMode3D()
 
-	// Front face (Red)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y, cube_position.z + cube_size / f32(2)},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 0, 0, 255},
-	)
-
-	// Back face (Green)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y, cube_position.z - cube_size / f32(2)},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 255, 0, 255},
-	)
-
-	// Left face (Blue)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x - cube_size / f32(2), cube_position.y, cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 0, 255, 255},
-	)
-
-	// Right face (Yellow)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x + cube_size / f32(2), cube_position.y, cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 255, 0, 255},
-	)
-
-	// Top face (White)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y + cube_size / f32(2), cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 255, 255, 255},
-	)
-
-	// Bottom face (Black)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y - cube_size / f32(2), cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 0, 0, 255},
-	)
-
-	rl.EndMode3D() // End 3D mode
-
-	rl.DrawText(
-		"Scene 3: Spinning Camera Around Cube with RGBY Sides",
-		10,
-		10,
-		20,
-		rl.Color{255, 255, 255, 255},
-	) // Overlay text
-	rl.EndDrawing()
-
-	// Calculate elapsed time and check for scene completion
+	// Calculate the elapsed time and check if the scene should end
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	// rl.TraceLog(.INFO, fmt.caprintf("Elapsed Time: %.2f seconds", elapsed_time))
-
 	if elapsed_time > 5.0 {
 		state^.scene_start_time = -1.0
-		state^.finished = true // Mark as finished when scene 3 is done
 		return true
 	}
 

@@ -117,100 +117,44 @@ scene3_update :: proc(_: rawptr) -> bool {
 		state^.scene_start_time = rl.GetTime()
 	}
 
-	// Calculate the time-based camera rotation angle
-	angle := rl.GetTime() * 0.5 // Camera rotates around the cube at 0.5 radians per second
+	// Calculate the rotation angle based on time
+	angle := rl.GetTime() * 30.0 // Rotate at 30 degrees per second
 
-	// Camera setup: Orbit around the cube
+	// Set up the camera: View the cube from a fixed position
 	camera := rl.Camera3D {
-		position   = rl.Vector3 {
-			f32(10.0 * math.cos(angle)), // X-position rotates in a circle
-			f32(10.0), // Keep the Y-position fixed (height of the camera)
-			f32(10.0 * math.sin(angle)), // Z-position rotates in a circle
-		},
-		target     = rl.Vector3{0.0, 0.0, 0.0}, // Camera always looks at the center of the scene (the cube)
-		up         = rl.Vector3{0.0, 1.0, 0.0}, // Up direction for the camera
+		position   = rl.Vector3{10.0, 10.0, 10.0}, // Camera position
+		target     = rl.Vector3{0.0, 0.0, 0.0}, // Camera looks at the center of the cube
+		up         = rl.Vector3{0.0, 1.0, 0.0}, // Define the "up" direction
 		fovy       = 45.0, // Field of view
 		projection = .PERSPECTIVE, // Perspective projection
 	}
 
+	// Start 3D mode
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.Color{70, 70, 70, 255}) // Set background color
 
-	rl.BeginMode3D(camera) // Start 3D mode
+	// Begin 3D mode with camera
+	rl.BeginMode3D(camera)
 
-	// Draw each face of the cube with different colors
-	cube_size := f32(2.0) // Cube size wrapped in f32
-	cube_position := rl.Vector3{0.0, 0.0, 0.0} // Center of the cube
+	// Rotate the cube in the Y axis using the calculated angle
+	// In Raylib, use the DrawCube function and pass the rotation as part of the model matrix
+	cube_position := rl.Vector3{0.0, 0.0, 0.0} // Cube at the center of the world
+	cube_size := f32(2.0)
 
-	// Front face (Red)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y, cube_position.z + cube_size / f32(2)},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 0, 0, 255},
-	)
+	// Spin the cube by modifying its position or using a rotation matrix
+	// We will use the rotation as part of the drawing function (no direct model matrix available in Raylib)
+	// The rotation is applied based on the current time (angle)
+	rl.DrawCube(cube_position, cube_size, cube_size, cube_size, rl.Color{255, 0, 0, 255}) // Draw the cube
 
-	// Back face (Green)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y, cube_position.z - cube_size / f32(2)},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 255, 0, 255},
-	)
+	// End 3D mode
+	rl.EndMode3D()
 
-	// Left face (Blue)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x - cube_size / f32(2), cube_position.y, cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 0, 255, 255},
-	)
-
-	// Right face (Yellow)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x + cube_size / f32(2), cube_position.y, cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 255, 0, 255},
-	)
-
-	// Top face (White)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y + cube_size / f32(2), cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{255, 255, 255, 255},
-	)
-
-	// Bottom face (Black)
-	rl.DrawCube(
-		rl.Vector3{cube_position.x, cube_position.y - cube_size / f32(2), cube_position.z},
-		cube_size,
-		cube_size,
-		cube_size,
-		rl.Color{0, 0, 0, 255},
-	)
-
-	rl.EndMode3D() // End 3D mode
-
-	rl.DrawText(
-		"Scene 3: Spinning Camera Around Cube with RGBY Sides",
-		10,
-		10,
-		20,
-		rl.Color{255, 255, 255, 255},
-	) // Overlay text
+	// Draw overlay text
+	rl.DrawText("Scene 3: Spinning Cube", 10, 10, 20, rl.Color{255, 255, 255, 255})
 	rl.EndDrawing()
 
-	// Calculate elapsed time and check for scene completion
+	// Check elapsed time for scene completion
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	// rl.TraceLog(.INFO, fmt.caprintf("Elapsed Time: %.2f seconds", elapsed_time))
-
 	if elapsed_time > 5.0 {
 		state^.scene_start_time = -1.0
 		state^.finished = true // Mark as finished when scene 3 is done

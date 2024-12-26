@@ -3,74 +3,208 @@ package plug
 import "base:runtime"
 import "core:fmt"
 import "core:math"
-import "core:mem"
 import rl "vendor:raylib"
-NUM_GROUPS :: 100 // Increase the number of groups to fill the screen
 
-// Define the environment structure
 Env :: struct {
 	delta_time:    f32,
 	screen_width:  f32,
 	screen_height: f32,
-	rendering:     bool,
-	play_sound:    proc(_: rl.Sound, _: rl.Wave), // function pointer equivalent
-	mouse_wheel:   f32, // Add mouse wheel input
 }
 
-to_string :: proc(env: Env) -> cstring {
-	return fmt.ctprintf(
-		"delta_time: %f, screen_width: %f, screen_height: %f, rendering: %t",
-		env.delta_time,
-		env.screen_width,
-		env.screen_height,
-		env.rendering,
-	)
+Scene :: struct {
+	update:  proc(_: rawptr) -> bool, // Logic and drawing
+	cleanup: proc(_: rawptr), // Cleanup logic
 }
 
-GroupState :: struct {
-	t_interp:  f32,
-	direction: f32,
+Future :: struct {
+	completed:   bool,
+	start_time:  f64,
+	duration:    f64,
+	on_complete: proc(_: rawptr),
 }
 
-// Plugin state structure
 plugin_state :: struct {
 	initialized: bool,
 	finished:    bool,
 	frame_count: int,
-	t:           f32,
+	t:           f64,
 	env:         Env,
-	direction:   f32,
-	t_interp:    f32,
-	groups:      [dynamic]GroupState,
-	camera:      rl.Camera2D,
-	rotation:    f32, // Track rotation angle
-	zoom_speed:  f32, // Speed of zoom transition
-	zoom_dir:    f32, // Direction of zoom change
-	zoom_min:    f32, // Minimum zoom value
-	zoom_max:    f32, // Maximum zoom value
 }
 
-state: plugin_state = plugin_state {
-	initialized = false,
-	finished    = false,
-	frame_count = 0,
-	env         = Env{},
-	rotation    = 0.0, // Initialize the rotation to 0
-	zoom_speed  = 0.01, // Smooth zoom speed
-	zoom_dir    = 1.0, // Start zooming in
-	zoom_min    = 0.2, // Minimum zoom limit
-	zoom_max    = 1.0, // Maximum zoom limit
+Manager :: struct {
+	current_scene: ^Scene,
+	next_scene:    ^Scene,
+	state_data:    rawptr,
 }
 
-// Plugin functions implementation
+future_state: Future = Future{}
+state: plugin_state = plugin_state{}
+manager: Manager = Manager{}
+
+scene1_update :: proc(_: rawptr) -> bool {
+	context = runtime.default_context()
+
+	// Track the start time using Raylib's GetTime
+	scene_start_time: f64 = -1.0
+
+	// Initialize start time for scene 1 on first update
+	if scene_start_time < 0.0 {
+		scene_start_time = rl.GetTime()
+	}
+
+	// Draw scene content
+	rl.ClearBackground(rl.Color{30, 30, 30, 255}) // Dark background
+	rl.DrawText("Scene 1", 10, 10, 20, rl.Color{255, 255, 255, 255})
+	rl.DrawCircle(i32(400 + int(math.sin(state.t) * 100)), 300, 50, rl.Color{0, 255, 0, 255})
+
+	// Check elapsed time since scene started
+	elapsed_time := rl.GetTime() - scene_start_time
+	if elapsed_time > 3.0 {
+		scene_start_time = -1.0 // Reset for next scene
+		return true // Scene 1 is complete
+	}
+
+	return false // Scene is still running
+}
+
+scene1_cleanup :: proc(_: rawptr) {
+	fmt.printf("Scene 1 cleanup\n")
+}
+
+scene2_update :: proc(_: rawptr) -> bool {
+	context = runtime.default_context()
+
+	// Track the start time for scene 2
+	scene_start_time: f64 = -1.0
+
+	// Initialize start time for scene 2 on first update
+	if scene_start_time < 0.0 {
+		scene_start_time = rl.GetTime()
+	}
+
+	// Draw scene content
+	rl.ClearBackground(rl.Color{50, 50, 50, 255}) // Darker background for scene 2
+	rl.DrawText("Scene 2", 10, 10, 20, rl.Color{255, 255, 255, 255})
+
+	// For example, let's animate a rotating circle for Scene 2
+	state.t += 0.05 // Change in time or custom animation parameter
+	radius := 100
+	center_x := f32(rl.GetScreenWidth()) * f32(0.5)
+	center_y := f32(rl.GetScreenHeight()) * 0.5
+	x_pos := center_x + f32(radius) * f32(math.cos(state.t))
+	y_pos := center_y + f32(radius) * f32(math.sin(state.t))
+
+	// Draw rotating circle
+	rl.DrawCircle(i32(x_pos), i32(y_pos), 30, rl.Color{0, 255, 255, 255}) // Blue circle
+
+	// Check elapsed time since scene started
+	elapsed_time := rl.GetTime() - scene_start_time
+	if elapsed_time > 5.0 {
+		scene_start_time = -1.0 // Reset for next scene
+		return true // Scene 2 is complete
+	}
+
+	return false // Scene is still running
+}
+
+
+scene2_cleanup :: proc(_: rawptr) {
+	fmt.printf("Scene 2 cleanup\n")
+}
+
+scene1: Scene = Scene {
+	update  = scene1_update,
+	cleanup = scene1_cleanup,
+}
+scene2: Scene = Scene {
+	update  = scene2_update,
+	cleanup = scene2_cleanup,
+}
+
 @(export)
 plug_init :: proc "c" () {
 	context = runtime.default_context()
-	state.initialized = true
+
+	state = plugin_state {
+		initialized = true,
+		finished    = false,
+		frame_count = 0,
+		t           = 0.0,
+		env         = Env{},
+	}
+
+	manager = Manager {
+		current_scene = &scene1,
+		next_scene    = &scene2,
+		state_data    = cast(rawptr)&state,
+	}
+
+	// Set up the Future for Scene transition
+	future_state = Future {
+		completed = false,
+		start_time = state.t,
+		duration = 3.0, // Wait for 3 seconds before Scene2 starts
+		on_complete = proc(_: rawptr) {
+			fmt.printf("Transitioning to Scene 2\n")
+			manager.current_scene = manager.next_scene
+		},
+	}
+}
+
+@(export)
+plug_update :: proc "c" (env: Env) {
+	context = runtime.default_context()
+
+	// We don't use env.delta_time anymore, rely on GetTime() for time-based logic
+	state.t = rl.GetTime() // Use Raylib's GetTime for global time
+
+	// Handle future-based transitions (if any)
+	if future_state.completed == false {
+		if (state.t - future_state.start_time) > future_state.duration {
+			future_state.completed = true
+			if future_state.on_complete != nil {
+				future_state.on_complete(manager.state_data) // Trigger next scene logic
+			}
+		}
+	}
+
+	// Update the current scene
+	if manager.current_scene != nil {
+		if manager.current_scene.update(manager.state_data) {
+			// Scene completed, cleanup and transition
+			if manager.current_scene.cleanup != nil {
+				manager.current_scene.cleanup(manager.state_data)
+			}
+			manager.current_scene = nil // Current scene is done
+		}
+	}
+}
+
+
+@(export)
+plug_reset :: proc "c" () {
 	state.finished = false
 	state.frame_count = 0
-	state.env = Env{}
-	state.groups = make([dynamic]GroupState, NUM_GROUPS)
+	state.t = 0.0
+
+	// Reset scene management
+	manager.current_scene = &scene1
+	manager.next_scene = &scene2
+
+	// Reset Future
+	future_state = Future {
+		completed = false,
+		start_time = state.t,
+		duration = 3.0,
+		on_complete = proc(_: rawptr) {
+			manager.current_scene = manager.next_scene
+		},
+	}
+}
+
+@(export)
+plug_finished :: proc "c" () -> bool {
+	return state.finished
 }
 
 @(export)
@@ -84,153 +218,4 @@ plug_post_reload :: proc "c" (prev_state: rawptr) {
 		prev_state_ptr := cast(^plugin_state)prev_state
 		state = prev_state_ptr^
 	}
-}
-
-euclidean_distance :: proc(a, b: rl.Vector2) -> f32 {
-	dx := a.x - b.x
-	dy := a.y - b.y
-	return math.sqrt(dx * dx + dy * dy)
-}
-
-@(export)
-plug_update :: proc "c" (env: Env) {
-	context = runtime.default_context()
-	state.env = env
-
-	state.frame_count += 1
-	if state.frame_count > 1200 {
-		state.finished = true
-	}
-
-	state.t += 0.01
-
-	// Drawing
-	{
-		// Update zoom value over time for continuous zooming in and out
-		state.camera.zoom += state.zoom_dir * state.zoom_speed
-		// Reverse zoom direction if the zoom reaches the min or max value
-		if state.camera.zoom <= state.zoom_min {
-			state.zoom_dir = 1.0 // Zoom in
-		}
-		if state.camera.zoom >= state.zoom_max {
-			state.zoom_dir = -1.0 // Zoom out
-		}
-
-		// Adjust camera rotation based on left and right arrow keys
-		if rl.IsKeyDown(.RIGHT) {
-			state.rotation += 0.01 // Rotate clockwise
-		}
-		if rl.IsKeyDown(.LEFT) {
-			state.rotation -= 0.01 // Rotate counter-clockwise
-		}
-
-		// Set camera properties with zoom and rotation
-		state.camera = rl.Camera2D {
-			rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
-			rl.Vector2{env.screen_width * 0.5, env.screen_height * 0.5},
-			state.rotation, // Apply rotation here
-			state.camera.zoom, // Apply zoom here
-		}
-
-		rl.BeginMode2D(state.camera)
-
-		// Gradient background for a more dynamic look
-		rl.ClearBackground(rl.Color{30, 30, 30, 255}) // Dark background
-
-		// Number of rows and groups per row (8 groups per row, multiple rows)
-		num_groups_per_row := 8 // 8 groups per row
-		num_rows := 6 // 6 rows to fill the screen
-
-		// Calculate the spacing between groups horizontally and vertically
-		group_spacing_x := env.screen_width / f32(num_groups_per_row) // Horizontal spacing between groups
-		group_spacing_y := env.screen_height / f32(num_rows) // Vertical spacing between groups
-
-		// Loop through each row and column to position the groups
-		for row in 0 ..< num_rows {
-			for col in 0 ..< num_groups_per_row {
-				group_index := row * num_groups_per_row + col
-				// Calculate the offset for each group
-				group_offset_x :=
-					f32(col) * group_spacing_x - env.screen_width * 0.5 + group_spacing_x * 0.5
-				group_offset_y :=
-					f32(row) * group_spacing_y - env.screen_height * 0.5 + group_spacing_y * 0.5
-
-				// Ensure the state.groups array has enough groups to handle the index
-				if len(state.groups) <= group_index {
-					append(&state.groups, GroupState{t_interp = 0.5, direction = 1.0})
-				}
-
-				group_state := &state.groups[group_index]
-
-				// Define sizes for the circles
-				radius_green := env.screen_width * 0.04
-				orbit_green := env.screen_width * 0.15 // Smaller orbit to fit within the screen
-				green_angle := state.t
-				green_position := rl.Vector2 {
-					env.screen_width * 0.5 + math.cos(green_angle) * orbit_green + group_offset_x,
-					env.screen_height * 0.5 + math.sin(green_angle) * orbit_green + group_offset_y,
-				}
-
-				radius_red := env.screen_width * 0.01
-				orbit_red := env.screen_width * 0.07 // Smaller orbit to fit within the screen
-				red_angle := state.t * 1.5 // Faster orbit for red circle
-				red_position := rl.Vector2 {
-					env.screen_width * 0.5 + math.cos(red_angle) * orbit_red + group_offset_x,
-					env.screen_height * 0.5 + math.sin(red_angle) * orbit_red + group_offset_y,
-				}
-
-				radius_yellow := env.screen_width * 0.01
-				group_state.t_interp += group_state.direction * 0.01
-				if group_state.t_interp >= 1.0 {
-					group_state.t_interp = 1.0
-					group_state.direction = -1.0
-				} else if group_state.t_interp <= 0.0 {
-					group_state.t_interp = 0.0
-					group_state.direction = 1.0
-				}
-
-				// Interpolate between the green and red positions for the yellow circle
-				x_yellow := math.lerp(green_position.x, red_position.x, group_state.t_interp)
-				y_yellow := math.lerp(green_position.y, red_position.y, group_state.t_interp)
-
-				yellow_position := rl.Vector2{x_yellow, y_yellow}
-
-				// Calculate distances to detect collisions and change directions
-				distance_to_green := euclidean_distance(yellow_position, green_position)
-				distance_to_red := euclidean_distance(yellow_position, red_position)
-
-				if distance_to_green < (radius_green + radius_yellow) {
-					group_state.direction = 1.0 // Change direction when touching the green circle
-				}
-				if distance_to_red < (radius_red + radius_yellow) {
-					group_state.direction = -1.0 // Change direction when touching the red circle
-				}
-
-				// Draw the circles with gradient and transparency for more polished look
-				rl.DrawCircleV(green_position, radius_green, rl.Color{0, 255, 0, 180})
-				rl.DrawCircleV(red_position, radius_red, rl.Color{255, 0, 0, 180})
-				rl.DrawCircleV(yellow_position, radius_yellow, rl.Color{255, 255, 0, 180})
-
-				// Use thinner lines for connection with a subtle color
-				rl.DrawLineV(green_position, yellow_position, rl.Color{255, 255, 255, 150})
-				rl.DrawLineV(yellow_position, red_position, rl.Color{255, 255, 255, 150})
-			}
-		}
-
-		rl.EndMode2D()
-	}
-}
-
-@(export)
-plug_reset :: proc "c" () {
-	state.finished = false
-	state.frame_count = 0
-	state.rotation = 0.0
-	state.camera.zoom = 0.4
-	state.zoom_dir = 1.0
-}
-
-@(export)
-plug_finished :: proc "c" () -> bool {
-	return state.finished
 }

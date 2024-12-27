@@ -5,6 +5,8 @@ import "core:fmt"
 import "core:math"
 import rl "vendor:raylib"
 
+SCENE2_PLAYTIME_SECS :: 2.0
+
 Env :: struct {
 	delta_time:    f32,
 	screen_width:  f32,
@@ -50,7 +52,7 @@ scene1_update :: proc(_: rawptr) -> bool {
 	rl.DrawCircle(i32(400 + int(math.sin(state^.t) * 100)), 300, 50, rl.Color{0, 255, 0, 255})
 
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	if elapsed_time > 5.0 {
+	if elapsed_time > 1.0 {
 		state^.scene_start_time = -1.0
 		return true
 	}
@@ -87,8 +89,9 @@ scene2_update :: proc(_: rawptr) -> bool {
 		.PERSPECTIVE,
 	}
 
-	rl.BeginMode3D(camera)
 	rl.DrawText("Scene 2 - Spinning Cube", 10, 10, 20, rl.Color{255, 255, 255, 255})
+	rl.BeginMode3D(camera)
+
 
 	if state.scene_shader.id != 0 {
 		state.current_shader = state.metal_shader
@@ -124,7 +127,7 @@ scene2_update :: proc(_: rawptr) -> bool {
 	rl.EndMode3D()
 
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	if elapsed_time > 10.0 {
+	if elapsed_time > SCENE2_PLAYTIME_SECS {
 		state^.scene_start_time = -1.0
 		return true
 	}
@@ -153,34 +156,80 @@ scene3_update :: proc(_: rawptr) -> bool {
 		state^.scene_start_time = rl.GetTime()
 	}
 
-	rl.ClearBackground(rl.Color{0, 0, 0, 255}) // Black background
+	// Clear the background with a color
+	rl.ClearBackground(rl.Color{50, 50, 50, 255})
+
+	// Increment time
 	state^.t += 0.01
+	radius := 5.0
+	angle := state^.t
+	cam_x := f32(radius) * f32(math.cos(angle))
+	cam_z := f32(radius) * f32(math.sin(angle))
+	cam_y := f32(2.0)
 
-	// Begin drawing with the shader
-	state.current_shader = state.scene_shader
-	rl.BeginShaderMode(state.current_shader)
+	// Set up the 3D camera
+	camera := rl.Camera3D {
+		rl.Vector3{cam_x, cam_y, cam_z},
+		rl.Vector3{0.0, 0.0, 0.0},
+		rl.Vector3{0.0, 1.0, 0.0},
+		45.0,
+		.PERSPECTIVE,
+	}
 
-	// Pass time as a uniform
-	timeLoc := rl.GetShaderLocation(state.current_shader, "iTime")
-	rl.SetShaderValue(state.current_shader, timeLoc, &state^.t, .FLOAT)
+	// Draw some text to show the current scene
+	rl.DrawText("Scene 3 - Galaxy Effect", 10, 10, 20, rl.Color{255, 255, 255, 255})
 
-	// Pass resolution as a uniform
-	resolution := rl.Vector2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
-	resolutionLoc := rl.GetShaderLocation(state.current_shader, "iResolution")
-	rl.SetShaderValue(state^.current_shader, resolutionLoc, &resolution, .VEC3)
+	// Begin 3D rendering mode
+	rl.BeginMode3D(camera)
 
-	// Draw a fullscreen quad to display the shader
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Color{255, 255, 255, 255})
+	// Apply the galaxy shader (same as in scene2)
+	if state.scene_shader.id != 0 {
+		state.current_shader = state.scene_shader
+		rl.BeginShaderMode(state.current_shader)
 
-	rl.EndShaderMode()
+		// Set up the transformation matrices
+		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
+		view := rl.MatrixLookAt(
+			rl.Vector3{cam_x, cam_y, cam_z},
+			rl.Vector3{0.0, 0.0, 0.0},
+			rl.Vector3{0.0, 1.0, 0.0},
+		)
+		projection := rl.MatrixPerspective(
+			45.0,
+			f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight()),
+			0.1,
+			100.0,
+		)
 
+		// Pass matrices to the shader
+		modelLoc := rl.GetShaderLocation(state.current_shader, "model")
+		viewLoc := rl.GetShaderLocation(state.current_shader, "view")
+		projectionLoc := rl.GetShaderLocation(state.current_shader, "projection")
+
+		rl.SetShaderValueMatrix(state.current_shader, modelLoc, model)
+		rl.SetShaderValueMatrix(state.current_shader, viewLoc, view)
+		rl.SetShaderValueMatrix(state.current_shader, projectionLoc, projection)
+
+		// Render a cube using the shader
+		cube_pos := rl.Vector3{0.0, 0.0, 0.0}
+		rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
+
+		// End shader mode after rendering the cube
+		rl.EndShaderMode()
+	}
+
+	// End 3D rendering mode
+	rl.EndMode3D()
+
+	// Check for elapsed time to transition scenes
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	if elapsed_time > 15.0 { 	// Let this scene run for 15 seconds
+	if elapsed_time > SCENE2_PLAYTIME_SECS {
 		state^.scene_start_time = -1.0
 		return true
 	}
 	return false
 }
+
 
 scene3_cleanup :: proc(_: rawptr) {
 	state := cast(^plugin_state)(manager.state_data)
@@ -227,7 +276,7 @@ plug_init :: proc "c" () {
 	)
 
 	shader_galaxy := rl.LoadShader(
-		"./assets/shaders/vertex_shader.glsl",
+		"./assets/shaders/vertex_shader_galaxy.glsl",
 		"./assets/shaders/fragment_shader_galaxy.glsl",
 	)
 

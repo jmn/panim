@@ -256,20 +256,33 @@ scene4_cleanup :: proc(state: ^plugin_state) {
 }
 
 advance_scene :: proc() {
-	// Transition to the next scene
-	manager.current_scene = manager.next_scene
-	manager.next_scene = nil
+	fmt.printf("Advancing to next scene\n")
+	fmt.printf("Current scene: %s\n", manager.current_scene.name)
 
-	if len(manager.scenes) > 0 {
-		// Loop back to the first scene after reaching the last one
+	// Find the index of the current scene
+	current_index := index_of_scene(manager.current_scene)
+	if current_index == -1 {
+		rl.TraceLog(.ERROR, "Current scene not found")
+		return
+	}
+
+	// Set the next scene to be the scene after the current one
+	if current_index + 1 < len(manager.scenes) {
+		manager.next_scene = &manager.scenes[current_index + 1]
+	} else {
+		// If it's the last scene, loop back to the first scene
 		manager.next_scene = &manager.scenes[0]
 	}
+
+	manager.current_scene = manager.next_scene
+	manager.next_scene = nil
 
 	// Reset the scene state
 	state.frame_count = 0
 	state.t = 0.0
 	state.scene_start_time = -1.0
 }
+
 
 // Future Scene Timer for scene transitions
 start_scene_timer :: proc(duration: f64, on_complete: proc(_: rawptr)) {
@@ -335,6 +348,7 @@ plug_update :: proc "c" (env: Env) {
 
 	state := cast(^plugin_state)(manager.state_data)
 	if state == nil {
+		fmt.printf("State is nil\n")
 		return
 	}
 
@@ -349,6 +363,7 @@ plug_update :: proc "c" (env: Env) {
 		}
 	}
 
+	fmt.printf("Current scene: %s\n", manager.current_scene.name)
 	if manager.current_scene != nil {
 		if manager.current_scene.update(state) {
 			if manager.current_scene.cleanup != nil {
@@ -366,11 +381,8 @@ plug_reset :: proc "c" () {
 	state.finished = false
 	state.frame_count = 0
 	state.t = 0.0
-
-	manager.current_scene = &manager.scenes[0]
-
-	// Reset future state for scene transition
-	start_scene_timer(3.0, proc(_: rawptr) {advance_scene()})
+	state.scene_start_time = -1.0
+	future_state.completed = false
 }
 
 @(export)

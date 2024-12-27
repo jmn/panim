@@ -23,7 +23,8 @@ plugin_state :: struct {
 	t:                f64,
 	scene_start_time: f64,
 	scene_shader:     rl.Shader,
-	current_shader:   ^rl.Shader,
+	metal_shader:     rl.Shader,
+	current_shader:   rl.Shader,
 }
 
 Manager :: struct {
@@ -89,9 +90,10 @@ scene2_update :: proc(_: rawptr) -> bool {
 	rl.BeginMode3D(camera)
 	rl.DrawText("Scene 2 - Spinning Cube", 10, 10, 20, rl.Color{255, 255, 255, 255})
 
-	if state.current_shader.id != 0 {
-		state.current_shader = &state.scene_shader
-		rl.BeginShaderMode(state.current_shader^)
+	if state.scene_shader.id != 0 {
+		state.current_shader = state.metal_shader
+		rl.BeginShaderMode(state.current_shader)
+
 		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
 		view := rl.MatrixLookAt(
 			rl.Vector3{cam_x, cam_y, cam_z},
@@ -100,21 +102,25 @@ scene2_update :: proc(_: rawptr) -> bool {
 		)
 		projection := rl.MatrixPerspective(
 			45.0,
-			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
+			f32(rl.GetScreenWidth()) / f32(rl.GetScreenHeight()),
 			0.1,
 			100.0,
 		)
-		modelLoc := rl.GetShaderLocation(state.current_shader^, "model")
-		viewLoc := rl.GetShaderLocation(state.current_shader^, "view")
-		projectionLoc := rl.GetShaderLocation(state.current_shader^, "projection")
 
-		rl.SetShaderValueMatrix(state.current_shader^, modelLoc, model)
-		rl.SetShaderValueMatrix(state.current_shader^, viewLoc, view)
-		rl.SetShaderValueMatrix(state.current_shader^, projectionLoc, projection)
+		modelLoc := rl.GetShaderLocation(state.current_shader, "model")
+		viewLoc := rl.GetShaderLocation(state.current_shader, "view")
+		projectionLoc := rl.GetShaderLocation(state.current_shader, "projection")
+
+		rl.SetShaderValueMatrix(state.current_shader, modelLoc, model)
+		rl.SetShaderValueMatrix(state.current_shader, viewLoc, view)
+		rl.SetShaderValueMatrix(state.current_shader, projectionLoc, projection)
+
+		cube_pos := rl.Vector3{0.0, 0.0, 0.0}
+		rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
+
+		rl.EndShaderMode()
 	}
 
-	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
-	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
 	rl.EndMode3D()
 
 	elapsed_time := rl.GetTime() - state^.scene_start_time
@@ -125,6 +131,7 @@ scene2_update :: proc(_: rawptr) -> bool {
 	return false
 }
 
+
 scene2_cleanup :: proc(_: rawptr) {
 	state := cast(^plugin_state)(manager.state_data)
 	if state == nil {
@@ -133,11 +140,60 @@ scene2_cleanup :: proc(_: rawptr) {
 
 	fmt.printf("Scene 2 cleanup\n")
 
-	// Only unload the shader if it's properly loaded
-	if state^.current_shader != nil && state^.current_shader.id != 0 {
-		rl.UnloadShader(state^.current_shader^)
-	}
+	// rl.UnloadShader(state.current_shader)
 }
+
+scene3_update :: proc(_: rawptr) -> bool {
+	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return false
+	}
+
+	if state^.scene_start_time < 0.0 {
+		state^.scene_start_time = rl.GetTime()
+	}
+
+	rl.ClearBackground(rl.Color{0, 0, 0, 255}) // Black background
+	state^.t += 0.01
+
+	// Begin drawing with the shader
+	state.current_shader = state.scene_shader
+	rl.BeginShaderMode(state.current_shader)
+
+	// Pass time as a uniform
+	timeLoc := rl.GetShaderLocation(state.current_shader, "iTime")
+	rl.SetShaderValue(state.current_shader, timeLoc, &state^.t, .FLOAT)
+
+	// Pass resolution as a uniform
+	resolution := rl.Vector2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
+	resolutionLoc := rl.GetShaderLocation(state.current_shader, "iResolution")
+	rl.SetShaderValue(state^.current_shader, resolutionLoc, &resolution, .VEC3)
+
+	// Draw a fullscreen quad to display the shader
+	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Color{255, 255, 255, 255})
+
+	rl.EndShaderMode()
+
+	elapsed_time := rl.GetTime() - state^.scene_start_time
+	if elapsed_time > 15.0 { 	// Let this scene run for 15 seconds
+		state^.scene_start_time = -1.0
+		return true
+	}
+	return false
+}
+
+scene3_cleanup :: proc(_: rawptr) {
+	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return
+	}
+
+	fmt.printf("Scene 3 cleanup\n")
+
+	// Unload the galaxy shader
+	// rl.UnloadShader(state^.current_shader)
+}
+
 
 scene1: Scene = Scene {
 	update  = scene1_update,
@@ -148,6 +204,12 @@ scene2: Scene = Scene {
 	update  = scene2_update,
 	cleanup = scene2_cleanup,
 }
+
+scene3: Scene = Scene {
+	update  = scene3_update,
+	cleanup = scene3_cleanup,
+}
+
 
 @(export)
 plug_init :: proc "c" () {
@@ -163,6 +225,12 @@ plug_init :: proc "c" () {
 		"./assets/shaders/vertex_shader.glsl",
 		"./assets/shaders/fragment_shader_metal.glsl",
 	)
+
+	shader_galaxy := rl.LoadShader(
+		"./assets/shaders/vertex_shader.glsl",
+		"./assets/shaders/fragment_shader_galaxy.glsl",
+	)
+
 	rl.TraceLog(.INFO, fmt.caprintf("Shader loaded okay %p", rl.IsShaderReady(shader_rgb)))
 
 	state = plugin_state {
@@ -171,8 +239,9 @@ plug_init :: proc "c" () {
 		frame_count      = 0,
 		t                = 0.0,
 		scene_start_time = -1.0,
-		scene_shader     = shader_metal,
-		current_shader   = &shader_metal,
+		scene_shader     = shader_galaxy,
+		metal_shader     = shader_metal,
+		current_shader   = shader_galaxy,
 	}
 
 	manager = Manager {
@@ -199,6 +268,9 @@ plug_update :: proc "c" (env: Env) {
 			// Transition between scenes based on a fixed time interval
 			if manager.current_scene == &scene1 {
 				manager.current_scene = &scene2
+
+			} else if manager.current_scene == &scene2 {
+				manager.current_scene = &scene3
 			} else {
 				state^.finished = true
 			}

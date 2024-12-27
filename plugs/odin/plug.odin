@@ -145,68 +145,66 @@ scene3_update :: proc(state: ^plugin_state) -> bool {
 
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
-		state^.current_shader = &state^.shaders[0] // Ensure shader is assigned
+		state^.current_shader = &state^.shaders[0]
 	}
 
-	// Set background color
-	rl.ClearBackground(rl.Color{50, 50, 50, 255})
+	// Set background color (gray)
+	rl.ClearBackground(rl.Color{128, 128, 128, 255})
 
-	// Update the rotation angle
-	state^.t += 0.01 // Control rotation speed
+	// Update rotation angle for the cube
+	state^.t += 0.01
 
-	// Calculate the camera's position around the cube
-	radius := 5.0 // Distance of camera from the cube
-	angle := state^.t // Rotation angle
+	// Camera setup: Orbiting the object (cube)
+	radius := 5.0 // Distance of camera from cube
+	angle := state^.t
 
-	// Calculate camera position using trigonometric functions
+	// Calculate the camera's position
 	cam_x := f32(radius) * f32(math.cos(angle))
 	cam_z := f32(radius) * f32(math.sin(angle))
-	cam_y := f32(2.0) // Fixed height for camera's y-axis position
+	cam_y := f32(2.0) // Camera height
 
-	// Define the camera position and the target (the center of the cube)
+	// Define camera looking at the center of the scene (where the cube is located)
 	camera := rl.Camera3D {
-		rl.Vector3{cam_x, cam_y, cam_z},
-		rl.Vector3{0.0, 0.0, 0.0}, // Cube is at the center
-		rl.Vector3{0.0, 1.0, 0.0}, // The 'up' direction is the y-axis
+		rl.Vector3{cam_x, cam_y, cam_z}, // Camera position
+		rl.Vector3{0.0, 0.0, 0.0}, // Target (cube is at the origin)
+		rl.Vector3{0.0, 1.0, 0.0}, // Up direction (y-axis)
 		45.0, // Field of view
-		.PERSPECTIVE,
+		.PERSPECTIVE, // Projection type
 	}
 
-	// Begin drawing in 3D mode
+	// Begin 3D mode
 	rl.BeginMode3D(camera)
 
-	// Draw "Scene 3" text
-	rl.DrawText("Scene 3", 10, 10, 20, rl.Color{255, 255, 255, 255}) // Text in white color
+	// Draw "Scene 3" text for debugging
+	rl.DrawText("Scene 3", 10, 10, 20, rl.Color{255, 255, 255, 255})
 
-	// If shader is being used, ensure uniforms are set correctly:
+	// Ensure the shader is active
 	if state^.current_shader.id != 0 {
-		rl.BeginShaderMode(state.current_shader^)
+		rl.BeginShaderMode(state^.current_shader^)
 
-		// Define the transformation matrices (model, view, projection)
-		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)}) // Rotation matrix for cube
+		// Set the shader matrices
+		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
 		view := rl.MatrixLookAt(
-		rl.Vector3{cam_x, cam_y, cam_z}, // Camera position
-		rl.Vector3{0.0, 0.0, 0.0}, // Camera target (cube center)
-		rl.Vector3{0.0, 1.0, 0.0}, // Camera up direction
+			rl.Vector3{cam_x, cam_y, cam_z},
+			rl.Vector3{0.0, 0.0, 0.0},
+			rl.Vector3{0.0, 1.0, 0.0},
 		)
 		projection := rl.MatrixPerspective(
-			45.0, // Field of view
-			f32(rl.GetScreenWidth() / rl.GetScreenHeight()), // Aspect ratio
-			0.1, // Near plane
-			100.0, // Far plane
+			45.0,
+			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
+			0.1,
+			100.0,
 		)
 
-		// Use SetShaderValueMatrix to set uniform matrices
+		// Set shader uniform values
 		modelLoc := rl.GetShaderLocation(state^.current_shader^, "model")
 		viewLoc := rl.GetShaderLocation(state^.current_shader^, "view")
 		projectionLoc := rl.GetShaderLocation(state^.current_shader^, "projection")
-
-		// Set the matrices as uniforms in the shader
 		rl.SetShaderValueMatrix(state^.current_shader^, modelLoc, model)
 		rl.SetShaderValueMatrix(state^.current_shader^, viewLoc, view)
 		rl.SetShaderValueMatrix(state^.current_shader^, projectionLoc, projection)
 
-		// Set shader values for time
+		// Set time uniform for animation
 		rl.SetShaderValue(
 			state^.current_shader^,
 			rl.GetShaderLocation(state^.current_shader^, "time"),
@@ -215,23 +213,20 @@ scene3_update :: proc(state: ^plugin_state) -> bool {
 		)
 	}
 
-	// Apply rotation to the cube (rotating around the center)
-	rotation_matrix := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
-
-	// Cube's center (we'll rotate it at the origin)
+	// Cube position
 	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
 
-	// Draw the cube (it's a single object)
-	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 255, 255, 1}) // Cube with red color
+	// Draw a red cube at the origin
+	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
 
-	// End drawing in 3D mode
+	// End 3D mode
 	rl.EndMode3D()
 
-	// Calculate the elapsed time and check if the scene should end
+	// Check time elapsed to transition to next scene
 	elapsed_time := rl.GetTime() - state^.scene_start_time
 	if elapsed_time > 4.0 {
 		state^.scene_start_time = -1.0
-		return true
+		return true // Transition to next scene
 	}
 
 	return false
@@ -318,6 +313,8 @@ scene4_update :: proc(state: ^plugin_state) -> bool {
 			&state^.t,
 			.FLOAT,
 		)
+	} else {
+		rl.TraceLog(.INFO, "NO SHADER")
 	}
 
 	// Cube position (centered at origin)
@@ -372,6 +369,94 @@ advance_scene :: proc() {
 	state.scene_start_time = -1.0
 }
 
+scene5_update :: proc(state: ^plugin_state) -> bool {
+	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return false
+	}
+
+	if state^.scene_start_time < 0.0 {
+		state^.scene_start_time = rl.GetTime()
+
+		// Load the new shaders for scene5
+		state^.current_shader = &state^.shaders[2] // Assuming shaders[1] is the new pair for scene5
+	}
+
+	// Clear background to a new color (light blue)
+	rl.ClearBackground(rl.Color{100, 150, 255, 255})
+
+	// Update time for animation
+	state^.t += 0.01
+
+	// Camera setup: Orbiting the object (cube)
+	radius := 5.0
+	angle := state^.t
+
+	// Camera position calculation
+	cam_x := f32(radius) * f32(math.cos(angle))
+	cam_z := f32(radius) * f32(math.sin(angle))
+	cam_y := f32(2.0)
+
+	camera := rl.Camera3D {
+		rl.Vector3{cam_x, cam_y, cam_z}, // Camera position
+		rl.Vector3{0.0, 0.0, 0.0}, // Target (cube at the origin)
+		rl.Vector3{0.0, 1.0, 0.0}, // Up direction
+		45.0, // Field of view
+		.PERSPECTIVE, // Projection type
+	}
+
+	rl.BeginMode3D(camera)
+
+	// Draw "Scene 5" text for debugging
+	rl.DrawText("Scene 5", 10, 10, 20, rl.Color{255, 255, 255, 255})
+
+	// Ensure the shader is active
+	if state^.current_shader.id != 0 {
+		rl.BeginShaderMode(state^.current_shader^)
+
+		// Set shader matrices
+		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
+		view := rl.MatrixLookAt(
+			rl.Vector3{cam_x, cam_y, cam_z},
+			rl.Vector3{0.0, 0.0, 0.0},
+			rl.Vector3{0.0, 1.0, 0.0},
+		)
+		projection := rl.MatrixPerspective(
+			45.0,
+			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
+			0.1,
+			100.0,
+		)
+
+		// Set shader uniforms
+		modelLoc := rl.GetShaderLocation(state^.current_shader^, "model")
+		viewLoc := rl.GetShaderLocation(state^.current_shader^, "view")
+		projectionLoc := rl.GetShaderLocation(state^.current_shader^, "projection")
+		rl.SetShaderValueMatrix(state^.current_shader^, modelLoc, model)
+		rl.SetShaderValueMatrix(state^.current_shader^, viewLoc, view)
+		rl.SetShaderValueMatrix(state^.current_shader^, projectionLoc, projection)
+
+		// Set the time uniform
+		timeLoc := rl.GetShaderLocation(state^.current_shader^, "time")
+		rl.SetShaderValue(state^.current_shader^, timeLoc, &state^.t, .FLOAT)
+	}
+
+	// Draw the cube with the shader applied
+	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
+	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{1, 0, 0, 255}) // Cube color doesn't matter since the shader will handle it
+
+	rl.EndMode3D()
+
+	// Check time to transition to the next scene
+	elapsed_time := rl.GetTime() - state^.scene_start_time
+	if elapsed_time > 4.0 {
+		state^.scene_start_time = -1.0
+		return true
+	}
+
+	return false
+}
+
 
 // Future Scene Timer for scene transitions
 start_scene_timer :: proc(duration: f64, on_complete: proc(_: rawptr)) {
@@ -403,6 +488,11 @@ plug_init :: proc "c" () {
 		rl.TraceLog(.ERROR, "Failed to load metal shader")
 	}
 
+	scene5_shader := rl.LoadShader(
+		"./assets/shaders/scene5_vert.glsl",
+		"./assets/shaders/scene5_frag.glsl",
+	)
+
 	state = plugin_state {
 		initialized      = true,
 		finished         = false,
@@ -410,15 +500,16 @@ plug_init :: proc "c" () {
 		t                = 0.0,
 		scene_start_time = -1.0,
 		env              = Env{},
-		shaders          = []rl.Shader{shader_metal, shader_rgb},
+		shaders          = []rl.Shader{shader_metal, shader_rgb, scene5_shader},
 		current_shader   = nil,
 	}
 
 	// Add scenes dynamically
 	create_and_add_scene("Scene 1", scene1_update, scene1_cleanup)
-	create_and_add_scene("Scene 2", scene2_update, scene1_cleanup)
-	create_and_add_scene("Scene 3", scene3_update, scene3_cleanup)
-	create_and_add_scene("Scene 4", scene4_update, scene4_cleanup)
+	// create_and_add_scene("Scene 2", scene2_update, scene1_cleanup)
+	// create_and_add_scene("Scene 3", scene3_update, scene3_cleanup)
+	// create_and_add_scene("Scene 4", scene4_update, scene4_cleanup)
+	create_and_add_scene("Scene 5", scene5_update, scene4_cleanup)
 
 	manager = Manager {
 		current_scene = &manager.scenes[0],

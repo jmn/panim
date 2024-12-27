@@ -212,7 +212,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 		// Render a cube using the shader
 		cube_pos := rl.Vector3{0.0, 0.0, 0.0}
-		rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
+		rl.DrawSphere(cube_pos, 2.0, rl.Color{255, 0, 0, 255})
 
 		// End shader mode after rendering the cube
 		rl.EndShaderMode()

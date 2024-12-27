@@ -12,8 +12,9 @@ Env :: struct {
 }
 
 Scene :: struct {
-	update:  proc(_: rawptr) -> bool, // Logic and drawing
-	cleanup: proc(_: rawptr), // Cleanup logic
+	name:    string,
+	update:  proc(state: ^plugin_state) -> bool, // General update function
+	cleanup: proc(state: ^plugin_state), // General cleanup function
 }
 
 Future :: struct {
@@ -30,14 +31,14 @@ plugin_state :: struct {
 	t:                f64,
 	scene_start_time: f64,
 	env:              Env,
-	scene3_shader:    rl.Shader, // Shader for Scene 3
-	scene4_shader:    rl.Shader, // Shader for Scene 4
-	current_shader:   ^rl.Shader, // Pointer to the currently active shader
+	current_shader:   ^rl.Shader,
+	shaders:          []rl.Shader,
 }
 
 Manager :: struct {
 	current_scene: ^Scene,
 	next_scene:    ^Scene,
+	scenes:        [dynamic]Scene,
 	state_data:    rawptr,
 }
 
@@ -45,23 +46,39 @@ future_state: Future = Future{}
 state: plugin_state = plugin_state{}
 manager: Manager = Manager{}
 
-advance_scene :: proc() {
-	rl.TraceLog(.INFO, fmt.caprintf("Advancing from scene %p", manager.current_scene))
-	if manager.current_scene == &scene1 {
-		manager.current_scene = &scene2
-	} else if manager.current_scene == &scene2 {
-		manager.current_scene = &scene3
-	} else if manager.current_scene == &scene3 {
-		manager.current_scene = &scene4
-	} else {
-		state.finished = true
-	}
+// Helper to add scenes dynamically using Odin's append function
+create_and_add_scene :: proc(
+	name: string,
+	update: proc(state: ^plugin_state) -> bool,
+	cleanup: proc(state: ^plugin_state),
+) {
+	scene := create_scene(name, update, cleanup)
+	append(&manager.scenes, scene) // Correct use of append
 }
 
-// Scene 1 Update and Cleanup
-scene1_update :: proc(_: rawptr) -> bool {
-	state := cast(^plugin_state)(manager.state_data)
+// Find scene index by name
+index_of_scene :: proc(scene: ^Scene) -> int {
+	for sc, i in manager.scenes {
+		if sc.name == scene.name {
+			return i
+		}
+	}
+	return -1
+}
+
+// General Scene Update function
+create_scene :: proc(
+	name: string,
+	update: proc(state: ^plugin_state) -> bool,
+	cleanup: proc(state: ^plugin_state),
+) -> Scene {
+	return Scene{name = name, update = update, cleanup = cleanup}
+}
+
+// Scene Logic and Cleanup Functions
+scene1_update :: proc(state: ^plugin_state) -> bool {
 	if state == nil {
+		rl.TraceLog(.ERROR, "State is nil in scene1_update")
 		return false
 	}
 
@@ -83,14 +100,13 @@ scene1_update :: proc(_: rawptr) -> bool {
 	return false
 }
 
-scene1_cleanup :: proc(_: rawptr) {
+scene1_cleanup :: proc(state: ^plugin_state) {
 	fmt.printf("Scene 1 cleanup\n")
 }
 
-// Scene 2 Update and Cleanup
-scene2_update :: proc(_: rawptr) -> bool {
-	state := cast(^plugin_state)(manager.state_data)
+scene2_update :: proc(state: ^plugin_state) -> bool {
 	if state == nil {
+		rl.TraceLog(.ERROR, "State is nil in scene2_update")
 		return false
 	}
 
@@ -120,20 +136,19 @@ scene2_update :: proc(_: rawptr) -> bool {
 	return false
 }
 
-scene2_cleanup :: proc(_: rawptr) {
+scene2_cleanup :: proc(state: ^plugin_state) {
 	fmt.printf("Scene 2 cleanup\n")
 }
 
-// Scene 3 Update and Cleanup
-scene3_update :: proc(_: rawptr) -> bool {
-	state := cast(^plugin_state)(manager.state_data)
+scene3_update :: proc(state: ^plugin_state) -> bool {
 	if state == nil {
+		rl.TraceLog(.ERROR, "State is nil in scene3_update")
 		return false
 	}
 
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
-		state^.current_shader = &state^.scene3_shader
+		state^.current_shader = &state^.shaders[0]
 	}
 
 	rl.ClearBackground(rl.Color{50, 50, 50, 255})
@@ -159,34 +174,14 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	rl.BeginMode3D(camera)
 
-	if state.current_shader.id != 0 {
-		rl.BeginShaderMode(state.current_shader^)
-		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
-		view := rl.MatrixLookAt(
-			rl.Vector3{cam_x, cam_y, cam_z},
-			rl.Vector3{0.0, 0.0, 0.0},
-			rl.Vector3{0.0, 1.0, 0.0},
+	if state^.current_shader != nil {
+		rl.BeginShaderMode(state^.current_shader^)
+		rotation_matrix := rl.MatrixRotateXYZ(
+			rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)},
 		)
-		projection := rl.MatrixPerspective(
-			45.0,
-			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
-			0.1,
-			100.0,
-		)
-
-		modelLoc := rl.GetShaderLocation(state.current_shader^, "model")
-		viewLoc := rl.GetShaderLocation(state.current_shader^, "view")
-		projectionLoc := rl.GetShaderLocation(state.current_shader^, "projection")
-
-		rl.SetShaderValueMatrix(state.current_shader^, modelLoc, model)
-		rl.SetShaderValueMatrix(state.current_shader^, viewLoc, view)
-		rl.SetShaderValueMatrix(state.current_shader^, projectionLoc, projection)
+		rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
+		rl.EndShaderMode()
 	}
-
-	rotation_matrix := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
-	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
-
-	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{255, 0, 0, 255})
 
 	rl.EndMode3D()
 
@@ -199,21 +194,18 @@ scene3_update :: proc(_: rawptr) -> bool {
 	return false
 }
 
-scene3_cleanup :: proc(_: rawptr) {
+scene3_cleanup :: proc(state: ^plugin_state) {
 	fmt.printf("Scene 3 cleanup\n")
-	rl.UnloadShader(state.current_shader^)
 }
 
-// Scene 4 Update
-scene4_update :: proc(_: rawptr) -> bool {
-	state := cast(^plugin_state)(manager.state_data)
+scene4_update :: proc(state: ^plugin_state) -> bool {
 	if state == nil {
+		rl.TraceLog(.ERROR, "State is nil in scene4_update")
 		return false
 	}
 
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
-		state^.current_shader = &state^.scene4_shader
 	}
 
 	rl.ClearBackground(rl.Color{30, 30, 30, 255})
@@ -237,7 +229,7 @@ scene4_update :: proc(_: rawptr) -> bool {
 
 	rl.BeginMode3D(camera)
 
-	if state^.current_shader != nil && state^.current_shader^.id != 0 {
+	if state^.current_shader != nil {
 		rl.BeginShaderMode(state^.current_shader^)
 
 		timeLoc := rl.GetShaderLocation(state^.current_shader^, "time")
@@ -259,29 +251,32 @@ scene4_update :: proc(_: rawptr) -> bool {
 	return false
 }
 
-scene4_cleanup :: proc(_: rawptr) {
+scene4_cleanup :: proc(state: ^plugin_state) {
 	fmt.printf("Scene 4 cleanup\n")
-	rl.UnloadShader(state.current_shader^)
 }
 
-scene1: Scene = Scene {
-	update  = scene1_update,
-	cleanup = scene1_cleanup,
+advance_scene :: proc() {
+	// Transition to the next scene
+	manager.current_scene = manager.next_scene
+	manager.next_scene = nil
+
+	if len(manager.scenes) > 0 {
+		// Loop back to the first scene after reaching the last one
+		manager.next_scene = &manager.scenes[0]
+	}
+
+	// Reset the scene state
+	state.frame_count = 0
+	state.t = 0.0
+	state.scene_start_time = -1.0
 }
 
-scene2: Scene = Scene {
-	update  = scene2_update,
-	cleanup = scene2_cleanup,
-}
-
-scene3: Scene = Scene {
-	update  = scene3_update,
-	cleanup = scene3_cleanup,
-}
-
-scene4: Scene = Scene {
-	update  = scene4_update,
-	cleanup = scene4_cleanup,
+// Future Scene Timer for scene transitions
+start_scene_timer :: proc(duration: f64, on_complete: proc(_: rawptr)) {
+	future_state.start_time = rl.GetTime()
+	future_state.duration = duration
+	future_state.on_complete = on_complete
+	future_state.completed = false
 }
 
 @(export)
@@ -289,15 +284,22 @@ plug_init :: proc "c" () {
 	context = runtime.default_context()
 	rl.SetTargetFPS(60)
 
+	// Loading shaders with error handling
 	shader_rgb := rl.LoadShader(
 		"./assets/shaders/vertex_shader.glsl",
 		"./assets/shaders/fragment_shader.glsl",
 	)
+	if shader_rgb.id == 0 {
+		rl.TraceLog(.ERROR, "Failed to load RGB shader")
+	}
 
 	shader_metal := rl.LoadShader(
 		"./assets/shaders/vertex_shader.glsl",
 		"./assets/shaders/fragment_shader_metal.glsl",
 	)
+	if shader_metal.id == 0 {
+		rl.TraceLog(.ERROR, "Failed to load metal shader")
+	}
 
 	state = plugin_state {
 		initialized      = true,
@@ -306,25 +308,25 @@ plug_init :: proc "c" () {
 		t                = 0.0,
 		scene_start_time = -1.0,
 		env              = Env{},
-		scene3_shader    = shader_rgb,
-		scene4_shader    = shader_metal,
+		shaders          = []rl.Shader{shader_rgb, shader_metal},
 		current_shader   = nil,
 	}
 
+	// Add scenes dynamically
+	create_and_add_scene("Scene 1", scene1_update, scene1_cleanup)
+	create_and_add_scene("Scene 2", scene2_update, scene2_cleanup)
+	create_and_add_scene("Scene 3", scene3_update, scene3_cleanup)
+	create_and_add_scene("Scene 4", scene4_update, scene4_cleanup)
+
 	manager = Manager {
-		current_scene = &scene1,
-		next_scene    = &scene2,
+		current_scene = &manager.scenes[0],
+		next_scene    = &manager.scenes[1],
+		scenes        = manager.scenes,
 		state_data    = cast(rawptr)&state,
 	}
 
-	future_state = Future {
-		completed = false,
-		start_time = state.t,
-		duration = 3.0,
-		on_complete = proc(_: rawptr) {
-			advance_scene()
-		},
-	}
+	// Start future state for scene transition
+	start_scene_timer(3.0, proc(_: rawptr) {advance_scene()})
 }
 
 @(export)
@@ -332,6 +334,10 @@ plug_update :: proc "c" (env: Env) {
 	context = runtime.default_context()
 
 	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return
+	}
+
 	state^.t = rl.GetTime()
 
 	if future_state.completed == false {
@@ -356,21 +362,15 @@ plug_update :: proc "c" (env: Env) {
 
 @(export)
 plug_reset :: proc "c" () {
+	context = runtime.default_context()
 	state.finished = false
 	state.frame_count = 0
 	state.t = 0.0
 
-	manager.current_scene = &scene1
-	manager.next_scene = &scene2
+	manager.current_scene = &manager.scenes[0]
 
-	future_state = Future {
-		completed = false,
-		start_time = state.t,
-		duration = 3.0,
-		on_complete = proc(_: rawptr) {
-			advance_scene()
-		},
-	}
+	// Reset future state for scene transition
+	start_scene_timer(3.0, proc(_: rawptr) {advance_scene()})
 }
 
 @(export)

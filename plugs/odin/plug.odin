@@ -16,13 +16,6 @@ Scene :: struct {
 	cleanup: proc(_: rawptr),
 }
 
-Future :: struct {
-	completed:   bool,
-	start_time:  f64,
-	duration:    f64,
-	on_complete: proc(_: rawptr),
-}
-
 plugin_state :: struct {
 	initialized:      bool,
 	finished:         bool,
@@ -39,7 +32,6 @@ Manager :: struct {
 	state_data:    rawptr,
 }
 
-future_state: Future = Future{}
 state: plugin_state = plugin_state{}
 manager: Manager = Manager{}
 
@@ -147,7 +139,6 @@ scene2_cleanup :: proc(_: rawptr) {
 	}
 }
 
-
 scene1: Scene = Scene {
 	update  = scene1_update,
 	cleanup = scene1_cleanup,
@@ -185,15 +176,6 @@ plug_init :: proc "c" () {
 		next_scene    = &scene2,
 		state_data    = cast(rawptr)&state,
 	}
-
-	future_state = Future {
-		completed = false,
-		start_time = state.t,
-		duration = 3.0,
-		on_complete = proc(_: rawptr) {
-			manager.current_scene = manager.next_scene
-		},
-	}
 }
 
 @(export)
@@ -203,21 +185,14 @@ plug_update :: proc "c" (env: Env) {
 	state := cast(^plugin_state)(manager.state_data)
 	state^.t = rl.GetTime()
 
-	if future_state.completed == false {
-		if (state^.t - future_state.start_time) > future_state.duration {
-			future_state.completed = true
-			if future_state.on_complete != nil {
-				future_state.on_complete(manager.state_data)
-			}
-		}
-	}
-
+	// Handle scene switching via time
 	if manager.current_scene != nil {
 		if manager.current_scene.update(manager.state_data) {
 			if manager.current_scene.cleanup != nil {
 				manager.current_scene.cleanup(manager.state_data)
 			}
 
+			// Transition between scenes based on a fixed time interval
 			if manager.current_scene == &scene1 {
 				manager.current_scene = &scene2
 			} else {
@@ -235,15 +210,6 @@ plug_reset :: proc "c" () {
 
 	manager.current_scene = &scene1
 	manager.next_scene = &scene2
-
-	future_state = Future {
-		completed = false,
-		start_time = state.t,
-		duration = 3.0,
-		on_complete = proc(_: rawptr) {
-			manager.current_scene = manager.next_scene
-		},
-	}
 }
 
 @(export)

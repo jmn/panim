@@ -212,7 +212,6 @@ scene3_cleanup :: proc(_: rawptr) {
 
 // Scene 4 Update
 scene4_update :: proc(_: rawptr) -> bool {
-	rl.TraceLog(.INFO, "Starting scene4_update")
 	state := cast(^plugin_state)(manager.state_data)
 	if state == nil {
 		return false
@@ -365,12 +364,12 @@ plug_update :: proc "c" (env: Env) {
 
 	// Update the current scene
 	if manager.current_scene != nil {
-		if manager.current_scene.update(manager.state_data) {
+		if manager.current_scene.update(state) { 	// Pass state directly
 			if manager.current_scene.cleanup != nil {
-				manager.current_scene.cleanup(manager.state_data)
+				manager.current_scene.cleanup(state)
 			}
 
-			// Check if we need to transition to the next scene
+			// Scene transitions
 			if manager.current_scene == &scene1 {
 				manager.current_scene = &scene2
 			} else if manager.current_scene == &scene2 {
@@ -378,7 +377,7 @@ plug_update :: proc "c" (env: Env) {
 			} else if manager.current_scene == &scene3 {
 				manager.current_scene = &scene4
 			} else {
-				state^.finished = true // All scenes are complete, set finished to true
+				state^.finished = true
 			}
 		}
 	}

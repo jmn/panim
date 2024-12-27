@@ -1,6 +1,6 @@
 #version 330
 
-in vec3 fragPosition;
+in vec4 fragPosition;
 in vec3 fragNormal;
 
 uniform float time;

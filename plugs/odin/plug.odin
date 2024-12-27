@@ -28,9 +28,11 @@ plugin_state :: struct {
 	finished:         bool,
 	frame_count:      int,
 	t:                f64,
-	scene_start_time: f64, // Add scene start time here
+	scene_start_time: f64,
 	env:              Env,
-	shader:           rl.Shader,
+	scene3_shader:    rl.Shader, // Shader for Scene 3
+	scene4_shader:    rl.Shader, // Shader for Scene 4
+	current_shader:   ^rl.Shader, // Pointer to the currently active shader
 }
 
 Manager :: struct {
@@ -120,6 +122,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
+		state^.current_shader = &state^.scene3_shader // Set active shader for Scene 3
 	}
 
 	// Set background color
@@ -148,10 +151,13 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	// Begin drawing in 3D mode
 	rl.BeginMode3D(camera)
-
+	//
+	// Draw "Scene 3" text
+	rl.DrawText("Scene 3", 10, 10, 20, rl.Color{255, 255, 255, 255}) // Text in white color
+	//
 	// If shader is being used, ensure uniforms are set correctly:
-	if state.shader.id != 0 {
-		rl.BeginShaderMode(state.shader)
+	if state.current_shader.id != 0 {
+		rl.BeginShaderMode(state.current_shader^)
 		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
 		view := rl.MatrixLookAt(
 			rl.Vector3{cam_x, cam_y, cam_z},
@@ -166,14 +172,14 @@ scene3_update :: proc(_: rawptr) -> bool {
 		)
 
 		// Use SetShaderValueMatrix to set uniform matrices
-		modelLoc := rl.GetShaderLocation(state.shader, "model")
-		viewLoc := rl.GetShaderLocation(state.shader, "view")
-		projectionLoc := rl.GetShaderLocation(state.shader, "projection")
+		modelLoc := rl.GetShaderLocation(state.current_shader^, "model")
+		viewLoc := rl.GetShaderLocation(state.current_shader^, "view")
+		projectionLoc := rl.GetShaderLocation(state.current_shader^, "projection")
 
 		// Set the matrices as uniforms in the shader
-		rl.SetShaderValueMatrix(state.shader, modelLoc, model)
-		rl.SetShaderValueMatrix(state.shader, viewLoc, view)
-		rl.SetShaderValueMatrix(state.shader, projectionLoc, projection)
+		rl.SetShaderValueMatrix(state.current_shader^, modelLoc, model)
+		rl.SetShaderValueMatrix(state.current_shader^, viewLoc, view)
+		rl.SetShaderValueMatrix(state.current_shader^, projectionLoc, projection)
 	}
 
 	// Apply rotation to the cube (rotating around the center)
@@ -190,7 +196,7 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 	// Calculate the elapsed time and check if the scene should end
 	elapsed_time := rl.GetTime() - state^.scene_start_time
-	if elapsed_time > 5.0 {
+	if elapsed_time > 4.0 {
 		state^.scene_start_time = -1.0
 		return true
 	}
@@ -201,8 +207,81 @@ scene3_update :: proc(_: rawptr) -> bool {
 
 scene3_cleanup :: proc(_: rawptr) {
 	fmt.printf("Scene 3 cleanup\n")
-	rl.UnloadShader(state.shader)
+	rl.UnloadShader(state.current_shader^)
 }
+
+// Scene 4 Update
+scene4_update :: proc(_: rawptr) -> bool {
+	rl.TraceLog(.INFO, "Starting scene4_update")
+	state := cast(^plugin_state)(manager.state_data)
+	if state == nil {
+		return false
+	}
+
+	if state^.scene_start_time < 0.0 {
+		state^.scene_start_time = rl.GetTime()
+		state^.current_shader = &state^.scene4_shader // Set active shader for Scene 4
+	}
+
+	// Set background color
+	rl.ClearBackground(rl.Color{30, 30, 30, 255})
+
+	// Update the rotation angle
+	state^.t += 0.01 // Control rotation speed
+
+	// Calculate the camera's position around the cube
+	radius := 5.0 // Distance of camera from the cube
+	angle := state^.t // Rotation angle
+
+	// Calculate camera position using trigonometric functions
+	cam_x := f32(radius) * f32(math.cos(angle))
+	cam_z := f32(radius) * f32(math.sin(angle))
+	cam_y := f32(2.0) // Fixed height for camera's y-axis position
+
+	// Define the camera position and the target (the center of the cube)
+	camera := rl.Camera3D {
+		rl.Vector3{cam_x, cam_y, cam_z},
+		rl.Vector3{0.0, 0.0, 0.0}, // Cube is at the center
+		rl.Vector3{0.0, 1.0, 0.0}, // The 'up' direction is the y-axis
+		45.0, // Field of view
+		.PERSPECTIVE,
+	}
+
+	// Begin drawing in 3D mode
+	rl.BeginMode3D(camera)
+
+	if state^.current_shader != nil && state^.current_shader^.id != 0 {
+		rl.BeginShaderMode(state^.current_shader^)
+
+		// Pass time as a uniform to the shader
+		timeLoc := rl.GetShaderLocation(state^.current_shader^, "time")
+		value: f32 = cast(f32)state^.t
+		rl.SetShaderValue(state^.current_shader^, timeLoc, &value, .FLOAT)
+
+
+		rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, 2.0, rl.Color{255, 255, 255, 255})
+		rl.EndShaderMode()
+	}
+
+
+	// End drawing in 3D mode
+	rl.EndMode3D()
+
+	// Calculate the elapsed time and check if the scene should end
+	elapsed_time := rl.GetTime() - state^.scene_start_time
+	if elapsed_time > 5.0 {
+		state^.scene_start_time = -1.0
+		return true
+	}
+
+	return false
+}
+
+scene4_cleanup :: proc(_: rawptr) {
+	fmt.printf("Scene 4 cleanup\n")
+	rl.UnloadShader(state.current_shader^)
+}
+
 
 scene1: Scene = Scene {
 	update  = scene1_update,
@@ -216,15 +295,24 @@ scene3: Scene = Scene {
 	update  = scene3_update,
 	cleanup = scene3_cleanup,
 }
+scene4: Scene = Scene {
+	update  = scene4_update,
+	cleanup = scene4_cleanup,
+}
 
 @(export)
 plug_init :: proc "c" () {
 	context = runtime.default_context()
 	rl.SetTargetFPS(60)
 
-	shader := rl.LoadShader(
+	shader_rgb := rl.LoadShader(
 		"./assets/shaders/vertex_shader.glsl",
 		"./assets/shaders/fragment_shader.glsl",
+	)
+
+	shader_metal := rl.LoadShader(
+		"./assets/shaders/vertex_shader.glsl",
+		"./assets/shaders/fragment_shader_metal.glsl",
 	)
 
 	state = plugin_state {
@@ -234,7 +322,9 @@ plug_init :: proc "c" () {
 		t                = 0.0,
 		scene_start_time = -1.0,
 		env              = Env{},
-		shader           = shader,
+		scene3_shader    = shader_rgb,
+		scene4_shader    = shader_metal,
+		current_shader   = nil,
 	}
 
 	manager = Manager {
@@ -285,6 +375,8 @@ plug_update :: proc "c" (env: Env) {
 				manager.current_scene = &scene2
 			} else if manager.current_scene == &scene2 {
 				manager.current_scene = &scene3
+			} else if manager.current_scene == &scene3 {
+				manager.current_scene = &scene4
 			} else {
 				state^.finished = true // All scenes are complete, set finished to true
 			}

@@ -152,45 +152,63 @@ scene3_update :: proc(_: rawptr) -> bool {
 		return false
 	}
 
+	// Initialize scene start time if it's not set
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
 	}
 
-	// Clear the background with a color
+	// Clear the background with a dark color
 	rl.ClearBackground(rl.Color{50, 50, 50, 255})
 
-	// Increment time
+	// Increment time for animation
 	state^.t += 0.01
 	radius := 5.0
 	angle := state^.t
-	cam_x := f32(radius) * f32(math.cos(angle))
-	cam_z := f32(radius) * f32(math.sin(angle))
-	cam_y := f32(2.0)
+	cam_x := radius * math.cos(angle)
+	cam_z := radius * math.sin(angle)
+	cam_y := 2.0
 
-	// Set up the 3D camera
+	// Set up the camera position (camera moves in a circle around the center)
 	camera := rl.Camera3D {
-		rl.Vector3{cam_x, cam_y, cam_z},
+		rl.Vector3{f32(cam_x), f32(cam_y), f32(cam_z)},
 		rl.Vector3{0.0, 0.0, 0.0},
 		rl.Vector3{0.0, 1.0, 0.0},
 		45.0,
 		.PERSPECTIVE,
 	}
 
-	// Draw some text to show the current scene
+	// Draw text to indicate the current scene
 	rl.DrawText("Scene 3 - Galaxy Effect", 10, 10, 20, rl.Color{255, 255, 255, 255})
 
 	// Begin 3D rendering mode
 	rl.BeginMode3D(camera)
 
-	// Apply the galaxy shader (same as in scene2)
+	// Apply the galaxy shader if it's available
 	if state.scene_shader.id != 0 {
 		state.current_shader = state.scene_shader
 		rl.BeginShaderMode(state.current_shader)
 
-		// Set up the transformation matrices
-		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
+		// Set the time uniform for animation (iTime)
+		rl.SetShaderValue(
+			state.current_shader,
+			rl.GetShaderLocation(state.current_shader, "iTime"),
+			&state^.t,
+			.FLOAT,
+		)
+
+		// Set the screen resolution uniform (iResolution)
+		screen_resolution := rl.Vector2{f32(rl.GetScreenWidth()), f32(rl.GetScreenHeight())}
+		rl.SetShaderValue(
+			state.current_shader,
+			rl.GetShaderLocation(state.current_shader, "iResolution"),
+			&screen_resolution,
+			.VEC2,
+		)
+
+		// Set model, view, and projection matrices for transformation (optional)
+		model := rl.MatrixIdentity() // Identity matrix for the model, you can apply rotation/scale if needed
 		view := rl.MatrixLookAt(
-			rl.Vector3{cam_x, cam_y, cam_z},
+			rl.Vector3{f32(cam_x), f32(cam_y), f32(cam_z)},
 			rl.Vector3{0.0, 0.0, 0.0},
 			rl.Vector3{0.0, 1.0, 0.0},
 		)
@@ -202,34 +220,43 @@ scene3_update :: proc(_: rawptr) -> bool {
 		)
 
 		// Pass matrices to the shader
-		modelLoc := rl.GetShaderLocation(state.current_shader, "model")
-		viewLoc := rl.GetShaderLocation(state.current_shader, "view")
-		projectionLoc := rl.GetShaderLocation(state.current_shader, "projection")
+		rl.SetShaderValueMatrix(
+			state.current_shader,
+			rl.GetShaderLocation(state.current_shader, "model"),
+			model,
+		)
+		rl.SetShaderValueMatrix(
+			state.current_shader,
+			rl.GetShaderLocation(state.current_shader, "view"),
+			view,
+		)
+		rl.SetShaderValueMatrix(
+			state.current_shader,
+			rl.GetShaderLocation(state.current_shader, "projection"),
+			projection,
+		)
 
-		rl.SetShaderValueMatrix(state.current_shader, modelLoc, model)
-		rl.SetShaderValueMatrix(state.current_shader, viewLoc, view)
-		rl.SetShaderValueMatrix(state.current_shader, projectionLoc, projection)
-
-		// Render a cube using the shader
+		// Render a sphere to visualize the galaxy effect
+		// Adjust the sphere's size, color, and position as needed for your effect
 		cube_pos := rl.Vector3{0.0, 0.0, 0.0}
-		rl.DrawSphere(cube_pos, 2.0, rl.Color{255, 0, 0, 255})
+		rl.DrawSphere(cube_pos, 2.0, rl.Color{255, 255, 255, 255}) // You can change this to other objects for more variety
 
-		// End shader mode after rendering the cube
+		// End shader mode
 		rl.EndShaderMode()
 	}
 
 	// End 3D rendering mode
 	rl.EndMode3D()
 
-	// Check for elapsed time to transition scenes
+	// Check for elapsed time and transition scenes if necessary
 	elapsed_time := rl.GetTime() - state^.scene_start_time
 	if elapsed_time > SCENE2_PLAYTIME_SECS {
 		state^.scene_start_time = -1.0
 		return true
 	}
+
 	return false
 }
-
 
 scene3_cleanup :: proc(_: rawptr) {
 	state := cast(^plugin_state)(manager.state_data)

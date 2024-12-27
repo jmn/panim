@@ -4,12 +4,11 @@ layout(location = 0) in vec3 aPos; // Vertex position
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
-uniform vec3 cameraPos;
 
-out vec3 fragPos;
+out vec2 uv;
 
 void main() {
-    fragPos = aPos; // Pass the position to the fragment shader
-    gl_Position = projection * view * model * vec4(aPos, 1.0); // Apply the transformation
+    uv = aPos.xy; // Pass the XY coordinates to the fragment shader
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
 }
 

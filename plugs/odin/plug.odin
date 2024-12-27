@@ -377,77 +377,60 @@ scene5_update :: proc(state: ^plugin_state) -> bool {
 
 	if state^.scene_start_time < 0.0 {
 		state^.scene_start_time = rl.GetTime()
-
-		// Load the new shaders for scene5
-		state^.current_shader = &state^.shaders[2] // Assuming shaders[1] is the new pair for scene5
+		state^.current_shader = &state^.shaders[2] // Use the new shader pair
 	}
 
-	// Clear background to a new color (light blue)
-	rl.ClearBackground(rl.Color{100, 150, 255, 255})
+	// Set background color
+	rl.ClearBackground(rl.Color{100, 150, 255, 255}) // Light blue background
 
-	// Update time for animation
-	state^.t += 0.01
+	// Update the rotation angle for the camera
+	state^.t += 0.01 // Control rotation speed
 
-	// Camera setup: Orbiting the object (cube)
+	// Calculate the camera's position around the cube
 	radius := 5.0
 	angle := state^.t
-
-	// Camera position calculation
 	cam_x := f32(radius) * f32(math.cos(angle))
 	cam_z := f32(radius) * f32(math.sin(angle))
 	cam_y := f32(2.0)
 
+	// Define the camera position and target (the cube)
 	camera := rl.Camera3D {
-		rl.Vector3{cam_x, cam_y, cam_z}, // Camera position
-		rl.Vector3{0.0, 0.0, 0.0}, // Target (cube at the origin)
-		rl.Vector3{0.0, 1.0, 0.0}, // Up direction
+		rl.Vector3{cam_x, cam_y, cam_z},
+		rl.Vector3{0.0, 0.0, 0.0}, // Target the center of the cube
+		rl.Vector3{0.0, 1.0, 0.0}, // The 'up' direction is the y-axis
 		45.0, // Field of view
-		.PERSPECTIVE, // Projection type
+		.PERSPECTIVE,
 	}
 
+	// Begin drawing in 3D mode
 	rl.BeginMode3D(camera)
 
-	// Draw "Scene 5" text for debugging
+	// Draw "Scene 5" text at the top-left corner
 	rl.DrawText("Scene 5", 10, 10, 20, rl.Color{255, 255, 255, 255})
 
-	// Ensure the shader is active
-	if state^.current_shader.id != 0 {
+	// Ensure shader is valid before applying
+	if state^.current_shader != nil && state^.current_shader.id != 0 {
 		rl.BeginShaderMode(state^.current_shader^)
 
-		// Set shader matrices
-		model := rl.MatrixRotateXYZ(rl.Vector3{f32(state^.t), f32(state^.t), f32(state^.t)})
-		view := rl.MatrixLookAt(
-			rl.Vector3{cam_x, cam_y, cam_z},
-			rl.Vector3{0.0, 0.0, 0.0},
-			rl.Vector3{0.0, 1.0, 0.0},
-		)
-		projection := rl.MatrixPerspective(
-			45.0,
-			f32(rl.GetScreenWidth() / rl.GetScreenHeight()),
-			0.1,
-			100.0,
-		)
-
-		// Set shader uniforms
-		modelLoc := rl.GetShaderLocation(state^.current_shader^, "model")
-		viewLoc := rl.GetShaderLocation(state^.current_shader^, "view")
-		projectionLoc := rl.GetShaderLocation(state^.current_shader^, "projection")
-		rl.SetShaderValueMatrix(state^.current_shader^, modelLoc, model)
-		rl.SetShaderValueMatrix(state^.current_shader^, viewLoc, view)
-		rl.SetShaderValueMatrix(state^.current_shader^, projectionLoc, projection)
-
-		// Set the time uniform
+		// Pass the time value to the shader for color animation
 		timeLoc := rl.GetShaderLocation(state^.current_shader^, "time")
-		rl.SetShaderValue(state^.current_shader^, timeLoc, &state^.t, .FLOAT)
+		if timeLoc != -1 {
+			rl.SetShaderValue(state^.current_shader^, timeLoc, &state^.t, .FLOAT)
+		} else {
+			rl.TraceLog(.ERROR, "Shader location for 'time' not found")
+		}
+
+		// Draw the cube with the shader applied
+		rl.DrawCube(rl.Vector3{0.0, 0.0, 0.0}, 2.0, 2.0, 2.0, rl.Color{255, 255, 255, 255})
+
+		rl.EndShaderMode() // End shader mode to revert back to default rendering
+	} else {
+		rl.TraceLog(.ERROR, "Shader not found or invalid")
 	}
 
-	// Draw the cube with the shader applied
-	cube_pos := rl.Vector3{0.0, 0.0, 0.0}
-	rl.DrawCube(cube_pos, 2.0, 2.0, 2.0, rl.Color{1, 0, 0, 255}) // Cube color doesn't matter since the shader will handle it
+	rl.EndMode3D() // End 3D mode
 
-	rl.EndMode3D()
-
-	// Check time to transition to the next scene
+	// Calculate the elapsed time and check if the scene should end
 	elapsed_time := rl.GetTime() - state^.scene_start_time
 	if elapsed_time > 4.0 {
 		state^.scene_start_time = -1.0

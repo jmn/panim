@@ -159,6 +159,10 @@ plug_init :: proc "c" () {
 		"./assets/shaders/fragment_shader.glsl",
 	)
 
+	shader_metal := rl.LoadShader(
+		"./assets/shaders/vertex_shader.glsl",
+		"./assets/shaders/fragment_shader_metal.glsl",
+	)
 	rl.TraceLog(.INFO, fmt.caprintf("Shader loaded okay %p", rl.IsShaderReady(shader_rgb)))
 
 	state = plugin_state {
@@ -167,8 +171,8 @@ plug_init :: proc "c" () {
 		frame_count      = 0,
 		t                = 0.0,
 		scene_start_time = -1.0,
-		scene_shader     = shader_rgb,
-		current_shader   = &shader_rgb,
+		scene_shader     = shader_metal,
+		current_shader   = &shader_metal,
 	}
 
 	manager = Manager {
